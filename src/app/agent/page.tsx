@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import AgentShell from '../components/AgentUI/AgentShell';
 import { useRealtimeAgent } from '../hooks/useRealtimeAgent';
-import useReactSpeechWakeWord from '../hooks/useReactSpeechWakeWord'; // CAMBIO: import por defecto
+import useReactSpeechWakeWord from '../hooks/useReactSpeechWakeWord';
 
 export default function AgentPage() {
   const { 
@@ -15,7 +15,10 @@ export default function AgentPage() {
     setAutoSleepCallback 
   } = useRealtimeAgent();
 
-  // Hook de wake word con Web Speech API (¡GRATIS!)
+  // Flag para evitar activaciones duplicadas
+  const isActivatingRef = useRef(false);
+
+  // Hook de wake word con Web Speech API
   const { 
     listening: wakeListening, 
     loading: wakeLoading, 
@@ -26,10 +29,20 @@ export default function AgentPage() {
     isSupported: speechSupported
   } = useReactSpeechWakeWord({
     wakeWords: ['jarvis', 'hey jarvis', 'ok jarvis', 'oye jarvis'],
-    language: 'es-ES', // Cambia a 'en-US' si prefieres inglés
+    language: 'es-ES',
     onWake: () => {
       console.log('🎯 Wake word detectado! Activando JARVIS...');
-      connect();
+      
+      // Evitar activaciones duplicadas
+      if (isActivatingRef.current || connected || connecting) {
+        console.log('⚠️ Activación ignorada - ya en proceso');
+        return;
+      }
+      
+      isActivatingRef.current = true;
+      connect().finally(() => {
+        isActivatingRef.current = false;
+      });
     },
     onError: (error: Error) => {
       console.error('❌ Error en wake word:', error);
@@ -39,27 +52,29 @@ export default function AgentPage() {
   // Función para reactivar wake word (usada en auto-sleep)
   const reactivateWakeWord = useCallback(() => {
     console.log('🔄 Reactivando wake word después de auto-sleep...');
-    if (wakeReady && !wakeListening) {
+    if (wakeReady && !wakeListening && !connected && !connecting) {
       setTimeout(() => startWakeWord(), 1000);
     }
-  }, [startWakeWord, wakeReady, wakeListening]);
+  }, [startWakeWord, wakeReady, wakeListening, connected, connecting]);
 
   // Configurar callback de auto-sleep
   useEffect(() => {
     setAutoSleepCallback(reactivateWakeWord);
   }, [setAutoSleepCallback, reactivateWakeWord]);
 
-  // Lógica de orquestación: wake word ↔ conversación
+  // Lógica de orquestación simplificada
   useEffect(() => {
     if (!speechSupported) {
       console.error('❌ Speech Recognition no soportado en este navegador');
       return;
     }
 
-    // Si está listo y no estoy conectado ni escuchando, activar wake word
-    if (wakeReady && !connected && !connecting && !wakeListening && !wakeLoading) {
-      console.log('🔊 Iniciando wake word listener...');
-      startWakeWord();
+    // Solo manejar el wake word cuando NO estoy conectado/conectando
+    if (!connected && !connecting && !isActivatingRef.current) {
+      if (wakeReady && !wakeListening && !wakeLoading) {
+        console.log('🔊 Iniciando wake word listener...');
+        startWakeWord();
+      }
     }
 
     // Si me conecto, detener wake word
@@ -68,21 +83,41 @@ export default function AgentPage() {
       stopWakeWord();
     }
 
-  }, [wakeReady, connected, connecting, wakeListening, wakeLoading, startWakeWord, stopWakeWord, speechSupported]);
+  }, [
+    wakeReady, 
+    connected, 
+    connecting, 
+    wakeListening, 
+    wakeLoading, 
+    startWakeWord, 
+    stopWakeWord, 
+    speechSupported
+  ]);
 
   // Función de toggle manual
   const handleToggle = useCallback(() => {
+    // Evitar clicks duplicados durante transiciones
+    if (connecting || isActivatingRef.current) {
+      console.log('⚠️ Toggle ignorado - transición en curso');
+      return;
+    }
+
     if (connected) {
       // Si estoy conectado, desconectar y reactivar wake word
       disconnect();
       setTimeout(() => {
-        if (wakeReady) startWakeWord();
+        if (wakeReady && !wakeListening) {
+          startWakeWord();
+        }
       }, 500);
-    } else if (!wakeListening && wakeReady) {
-      // Si no estoy escuchando wake word y está listo, conectar directamente
-      connect();
+    } else {
+      // Si no estoy conectado, conectar directamente
+      isActivatingRef.current = true;
+      connect().finally(() => {
+        isActivatingRef.current = false;
+      });
     }
-  }, [connected, wakeListening, wakeReady, disconnect, startWakeWord, connect]);
+  }, [connected, connecting, wakeListening, wakeReady, disconnect, startWakeWord, connect]);
 
   // Pantalla de configuración si no hay Speech Recognition
   if (!speechSupported) {
@@ -139,7 +174,12 @@ export default function AgentPage() {
           
           <div style={{ marginBottom: '20px' }}>
             <button
-              onClick={() => connect()}
+              onClick={() => {
+                isActivatingRef.current = true;
+                connect().finally(() => {
+                  isActivatingRef.current = false;
+                });
+              }}
               style={{
                 padding: '15px 30px',
                 background: 'linear-gradient(45deg, #0066cc, #0099ff)',
@@ -199,10 +239,12 @@ export default function AgentPage() {
         }}>
           <div><strong>🤖 JARVIS DEBUG</strong></div>
           <div>Connected: {connected ? '✅' : '❌'}</div>
+          <div>Connecting: {connecting ? '🔄' : '❌'}</div>
           <div>Status: <span style={{color: '#ffff00'}}>{status}</span></div>
           <div>Speech Support: {speechSupported ? '✅' : '❌'}</div>
           <div>Wake Ready: {wakeReady ? '✅' : '❌'}</div>
           <div>Wake Listening: {wakeListening ? '👂' : '🔇'}</div>
+          <div>Activating: {isActivatingRef.current ? '🔄' : '❌'}</div>
           {wakeError && (
             <div style={{color: '#ff4444', marginTop: '5px'}}>
               <strong>Error:</strong><br/>
