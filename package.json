@@ -11,6 +11,8 @@
   "dependencies": {
     "@openai/agents": "^0.0.16",
     "@openai/agents-realtime": "^0.0.16",
+    "@picovoice/porcupine-react": "^3.0.3",
+    "@picovoice/web-voice-processor": "^4.0.9",
     "next": "15.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0"
