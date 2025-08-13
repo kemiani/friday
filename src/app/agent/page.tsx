@@ -3,9 +3,7 @@
 import { useEffect, useCallback } from 'react';
 import AgentShell from '../components/AgentUI/AgentShell';
 import { useRealtimeAgent } from '../hooks/useRealtimeAgent';
-import { useWakeWord } from '../hooks/useWakeWord';
-
-const PICOVOICE_ACCESS_KEY = process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY;
+import useReactSpeechWakeWord from '../hooks/useReactSpeechWakeWord'; // CAMBIO: import por defecto
 
 export default function AgentPage() {
   const { 
@@ -17,22 +15,23 @@ export default function AgentPage() {
     setAutoSleepCallback 
   } = useRealtimeAgent();
 
-  // Hook de wake word con Porcupine React
+  // Hook de wake word con Web Speech API (¡GRATIS!)
   const { 
     listening: wakeListening, 
     loading: wakeLoading, 
     error: wakeError,
     isReady: wakeReady,
     start: startWakeWord, 
-    stop: stopWakeWord 
-  } = useWakeWord({
-    accessKey: PICOVOICE_ACCESS_KEY || '',
-    keywordPath: '/keywords/jarvis.ppn',
+    stop: stopWakeWord,
+    isSupported: speechSupported
+  } = useReactSpeechWakeWord({
+    wakeWords: ['jarvis', 'hey jarvis', 'ok jarvis', 'oye jarvis'],
+    language: 'es-ES', // Cambia a 'en-US' si prefieres inglés
     onWake: () => {
       console.log('🎯 Wake word detectado! Activando JARVIS...');
       connect();
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('❌ Error en wake word:', error);
     }
   });
@@ -52,12 +51,12 @@ export default function AgentPage() {
 
   // Lógica de orquestación: wake word ↔ conversación
   useEffect(() => {
-    if (!PICOVOICE_ACCESS_KEY) {
-      console.error('❌ NEXT_PUBLIC_PICOVOICE_ACCESS_KEY no configurado');
+    if (!speechSupported) {
+      console.error('❌ Speech Recognition no soportado en este navegador');
       return;
     }
 
-    // Si Porcupine está listo y no estoy conectado ni escuchando, activar wake word
+    // Si está listo y no estoy conectado ni escuchando, activar wake word
     if (wakeReady && !connected && !connecting && !wakeListening && !wakeLoading) {
       console.log('🔊 Iniciando wake word listener...');
       startWakeWord();
@@ -69,7 +68,7 @@ export default function AgentPage() {
       stopWakeWord();
     }
 
-  }, [wakeReady, connected, connecting, wakeListening, wakeLoading, startWakeWord, stopWakeWord]);
+  }, [wakeReady, connected, connecting, wakeListening, wakeLoading, startWakeWord, stopWakeWord, speechSupported]);
 
   // Función de toggle manual
   const handleToggle = useCallback(() => {
@@ -85,8 +84,8 @@ export default function AgentPage() {
     }
   }, [connected, wakeListening, wakeReady, disconnect, startWakeWord, connect]);
 
-  // Pantalla de configuración si no hay access key
-  if (!PICOVOICE_ACCESS_KEY) {
+  // Pantalla de configuración si no hay Speech Recognition
+  if (!speechSupported) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -109,12 +108,12 @@ export default function AgentPage() {
           boxShadow: '0 0 40px rgba(255, 68, 68, 0.3)'
         }}>
           <h2 style={{ marginBottom: '25px', color: '#ff6666', fontSize: '1.8rem' }}>
-            ⚡ CONFIGURACIÓN REQUERIDA ⚡
+            ⚠️ NAVEGADOR NO COMPATIBLE ⚠️
           </h2>
           
           <div style={{ textAlign: 'left', marginBottom: '25px', lineHeight: '1.6' }}>
             <p style={{ marginBottom: '20px', color: '#ffffff' }}>
-              Para activar el wake word <strong>"Jarvis"</strong>, necesitas configurar Picovoice:
+              Tu navegador no soporta <strong>Speech Recognition</strong> para wake words.
             </p>
             
             <div style={{
@@ -125,40 +124,17 @@ export default function AgentPage() {
               marginBottom: '20px',
               border: '1px solid rgba(255, 68, 68, 0.3)'
             }}>
-              <strong style={{ color: '#66ccff' }}>📋 PASOS:</strong><br/><br/>
+              <strong style={{ color: '#66ccff' }}>✅ NAVEGADORES COMPATIBLES:</strong><br/><br/>
               
-              <strong>1.</strong> Ve a{' '}
-              <a href="https://console.picovoice.ai/" target="_blank" 
-                 style={{color: '#66ccff', textDecoration: 'underline'}}>
-                console.picovoice.ai
-              </a><br/>
+              <strong>• Google Chrome</strong> (recomendado)<br/>
+              <strong>• Microsoft Edge</strong><br/>
+              <strong>• Safari</strong> (macOS/iOS)<br/>
+              <strong>• Opera</strong><br/><br/>
               
-              <strong>2.</strong> Crea una cuenta gratuita<br/>
-              
-              <strong>3.</strong> Crea un proyecto wake word:<br/>
-              {'   '}- Clic en "Wake Word" → "Create"<br/>
-              {'   '}- Nombre: "Jarvis"<br/>
-              {'   '}- Plataforma: "Web (WASM)"<br/>
-              {'   '}- Graba 3-5 muestras diciendo "Jarvis"<br/>
-              {'   '}- Entrena y descarga el .ppn<br/>
-              
-              <strong>4.</strong> Guarda el archivo como: <code style={{background: 'rgba(0,0,0,0.5)', padding: '2px 4px'}}>public/keywords/jarvis.ppn</code><br/>
-              
-              <strong>5.</strong> Copia tu Access Key y agrégala a .env.local:
+              <strong style={{ color: '#ff6666' }}>❌ NO COMPATIBLE:</strong><br/>
+              <strong>• Firefox</strong> (no soporta Speech Recognition)<br/>
+              <strong>• Navegadores antiguos</strong>
             </div>
-            
-            <code style={{
-              display: 'block',
-              background: 'rgba(0, 0, 0, 0.8)',
-              padding: '15px',
-              borderRadius: '8px',
-              fontSize: '0.85rem',
-              color: '#00ff00',
-              border: '1px solid rgba(0, 255, 0, 0.3)',
-              wordBreak: 'break-all'
-            }}>
-              NEXT_PUBLIC_PICOVOICE_ACCESS_KEY=tu_clave_aqui
-            </code>
           </div>
           
           <div style={{ marginBottom: '20px' }}>
@@ -224,9 +200,9 @@ export default function AgentPage() {
           <div><strong>🤖 JARVIS DEBUG</strong></div>
           <div>Connected: {connected ? '✅' : '❌'}</div>
           <div>Status: <span style={{color: '#ffff00'}}>{status}</span></div>
+          <div>Speech Support: {speechSupported ? '✅' : '❌'}</div>
           <div>Wake Ready: {wakeReady ? '✅' : '❌'}</div>
           <div>Wake Listening: {wakeListening ? '👂' : '🔇'}</div>
-          <div>Wake Loading: {wakeLoading ? '⏳' : '✅'}</div>
           {wakeError && (
             <div style={{color: '#ff4444', marginTop: '5px'}}>
               <strong>Error:</strong><br/>
