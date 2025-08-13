@@ -1,6 +1,11 @@
+// ===============================================
+// 3. WAKE WORD ULTRA-RESPONSIVO
+// src/app/hooks/useReactSpeechWakeWord.ts (VERSIÓN 2.0)
+// ===============================================
+
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 type UseReactSpeechWakeWordOpts = {
@@ -11,8 +16,8 @@ type UseReactSpeechWakeWordOpts = {
 };
 
 function useReactSpeechWakeWord({
-  wakeWords = ['jarvis', 'hey jarvis', 'ok jarvis', 'oye jarvis'],
-  language = 'es-ES',
+  wakeWords = ['jarvis'],
+  language = 'es-ES', 
   onWake,
   onError
 }: UseReactSpeechWakeWordOpts) {
@@ -23,66 +28,111 @@ function useReactSpeechWakeWord({
     browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
-  // Verificar wake words en el transcript
+  const lastDetectionRef = useRef<number>(0);
+  const isProcessingRef = useRef<boolean>(false);
+  const confidenceBoostRef = useRef<number>(0);
+
+  // OPTIMIZACIÓN 1: Detección ultra-agresiva
   useEffect(() => {
-    if (transcript) {
-      const lowerTranscript = transcript.toLowerCase();
-      console.log('🔊 Escuchado:', lowerTranscript);
+    if (transcript && !isProcessingRef.current) {
+      const now = Date.now();
+      const lowerTranscript = transcript.toLowerCase().trim();
       
-      const detected = wakeWords.some(word => 
-        lowerTranscript.includes(word.toLowerCase())
-      );
+      // Debounce de solo 200ms
+      if (now - lastDetectionRef.current < 50) return;
       
+      console.log('🎤 Audio:', lowerTranscript);
+      
+      // OPTIMIZACIÓN 2: Múltiples estrategias de detección
+      const detected = wakeWords.some(word => {
+        const cleanWord = word.toLowerCase();
+        
+        // Estrategia 1: Coincidencia exacta
+        if (lowerTranscript.includes(cleanWord)) return true;
+        
+        // Estrategia 2: Coincidencia fonética (para español)
+        if (cleanWord === 'jarvis') {
+          const phonetic = ['jarvis', 'harvey', 'harvis', 'jarbi', 'jarbi'];
+          return phonetic.some(p => lowerTranscript.includes(p));
+        }
+        
+        // Estrategia 3: Coincidencia por sílabas
+        if (lowerTranscript.includes('jar') && lowerTranscript.includes('vis')) return true;
+        
+        return false;
+      });
+      
+      // OPTIMIZACIÓN 3: Sistema de confianza progresiva
       if (detected) {
-        console.log('🎯 WAKE WORD DETECTADO:', lowerTranscript);
-        onWake();
-        stop(); // Detener después de detección
-        resetTranscript(); // Limpiar transcript
+        confidenceBoostRef.current++;
+        console.log(`🎯 DETECCIÓN (confianza: ${confidenceBoostRef.current})`);
+        
+        // Activar inmediatamente en primera detección clara
+        if (lowerTranscript.includes('jarvis') || confidenceBoostRef.current >= 1) {
+          console.log('⚡ ACTIVACIÓN INMEDIATA');
+          isProcessingRef.current = true;
+          lastDetectionRef.current = now;
+          confidenceBoostRef.current = 0;
+          
+          onWake();
+          resetTranscript();
+          SpeechRecognition.stopListening();
+          
+          setTimeout(() => {
+            isProcessingRef.current = false;
+          }, 500);
+        }
+      } else {
+        // Resetear confianza si no hay detección
+        confidenceBoostRef.current = Math.max(0, confidenceBoostRef.current - 1);
       }
     }
-  }, [transcript, wakeWords, onWake]);
+  }, [transcript, wakeWords, onWake, resetTranscript]);
+
+  // OPTIMIZACIÓN 4: Restart inmediato y continuo
+  useEffect(() => {
+    if (browserSupportsSpeechRecognition && !listening && !isProcessingRef.current) {
+      const restartTimer = setTimeout(() => {
+        console.log('🔄 Auto-restart inmediato');
+        start();
+      }, 50); // Restart en 50ms
+      
+      return () => clearTimeout(restartTimer);
+    }
+  }, [listening, browserSupportsSpeechRecognition]);
 
   const start = useCallback(() => {
-    if (!browserSupportsSpeechRecognition) {
-      const error = new Error('Speech Recognition no soportado');
-      onError?.(error);
+    if (!browserSupportsSpeechRecognition || isProcessingRef.current || listening) {
       return;
     }
 
+    // OPTIMIZACIÓN 5: Configuración más agresiva
     SpeechRecognition.startListening({
       continuous: true,
       language: language,
-      interimResults: true
+      interimResults: true,
     });
     
-    console.log('🚀 Iniciando wake word detection...');
-  }, [browserSupportsSpeechRecognition, language, onError]);
+    console.log('🔊 Wake word ULTRA-RESPONSIVO activo');
+  }, [browserSupportsSpeechRecognition, language, listening]);
 
   const stop = useCallback(() => {
     SpeechRecognition.stopListening();
-    console.log('🛑 Deteniendo wake word detection');
+    isProcessingRef.current = false;
+    confidenceBoostRef.current = 0;
   }, []);
-
-  const cleanup = useCallback(() => {
-    stop();
-    resetTranscript();
-  }, [stop, resetTranscript]);
 
   return {
     listening,
     loading: false,
-    error: browserSupportsSpeechRecognition ? null : 'Speech Recognition no soportado',
+    error: browserSupportsSpeechRecognition ? null : 'No compatible',
     isReady: browserSupportsSpeechRecognition,
     start,
     stop,
-    cleanup,
+    cleanup: stop,
     isSupported: browserSupportsSpeechRecognition,
-    transcript // Para debugging
+    transcript
   };
 }
 
-// Export por defecto
 export default useReactSpeechWakeWord;
-
-// También export nombrado por compatibilidad
-export { useReactSpeechWakeWord };

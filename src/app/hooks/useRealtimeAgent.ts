@@ -1,3 +1,8 @@
+// ===============================================
+// 2. HOOK ULTRA-OPTIMIZADO CON PREDICCIÓN
+// src/app/hooks/useRealtimeAgent.ts (VERSIÓN 2.0)
+// ===============================================
+
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -6,7 +11,7 @@ import { createAndConnectSession } from '../lib/agent/realtime';
 
 export type UiStatus = 'idle'|'connecting'|'listening'|'speaking';
 
-const AUTO_SLEEP_MS = 20_000; // 20 segundos de silencio antes de auto-sleep
+const AUTO_SLEEP_MS = 15_000; // Reducido a 15 segundos
 
 export function useRealtimeAgent() {
   const [status, setStatus] = useState<UiStatus>('idle');
@@ -15,13 +20,58 @@ export function useRealtimeAgent() {
   const sessionRef = useRef<RealtimeSession | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onAutoSleepRef = useRef<(() => void) | null>(null);
+  
+  // OPTIMIZACIÓN 1: Predicción de activación
+  const predictionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isPreConnectingRef = useRef(false);
 
-  // Función para configurar callback de auto-sleep
+  // OPTIMIZACIÓN 2: Pre-conexión predictiva
+  const preConnect = useCallback(async () => {
+    if (isPreConnectingRef.current || sessionRef.current || connected || connecting) {
+      return;
+    }
+
+    console.log('🔮 PRE-CONECTANDO por predicción...');
+    isPreConnectingRef.current = true;
+
+    try {
+      // Pre-fetch del token sin conectar aún
+      const res = await fetch('/api/realtime/session', { cache: 'no-store' });
+      const data = await res.json();
+      
+      if (data?.apiKey) {
+        console.log('✅ Token pre-obtenido y listo para uso inmediato');
+        // Guardar token para uso inmediato
+        (window as any).__jarvisToken = {
+          apiKey: data.apiKey,
+          timestamp: Date.now()
+        };
+      }
+    } catch (error) {
+      console.log('⚠️ Error en pre-conexión:', error);
+    } finally {
+      isPreConnectingRef.current = false;
+    }
+  }, [connected, connecting]);
+
+  // OPTIMIZACIÓN 3: Activar pre-conexión cuando wake word esté activo
+  useEffect(() => {
+    // Pre-conectar después de 3 segundos de wake word activo
+    predictionTimeoutRef.current = setTimeout(() => {
+      preConnect();
+    }, 3000);
+
+    return () => {
+      if (predictionTimeoutRef.current) {
+        clearTimeout(predictionTimeoutRef.current);
+      }
+    };
+  }, [preConnect]);
+
   const setAutoSleepCallback = useCallback((callback: () => void) => {
     onAutoSleepRef.current = callback;
   }, []);
 
-  // Función para limpiar timer de silencio
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
@@ -29,92 +79,79 @@ export function useRealtimeAgent() {
     }
   }, []);
 
-  // Función para armar timer de silencio
   const armSilenceTimer = useCallback(() => {
     clearSilenceTimer();
-    console.log('⏰ Armando timer de auto-sleep (20s)...');
     silenceTimerRef.current = setTimeout(() => {
-      console.log('🕒 Auto-sleep por inactividad (20s)');
-      // Primero desconectar
+      console.log('🕒 Auto-sleep (15s)');
       disconnect();
-      // Luego reactivar wake word si hay callback
       if (onAutoSleepRef.current) {
         onAutoSleepRef.current();
       }
     }, AUTO_SLEEP_MS);
   }, [clearSilenceTimer]);
 
+  // OPTIMIZACIÓN 4: Conexión ULTRA-RÁPIDA con token pre-obtenido
   const connect = useCallback(async () => {
-    if (sessionRef.current) return; // ya conectado
+    if (sessionRef.current) return;
     
     try {
       setConnecting(true);
       setStatus('connecting');
       clearSilenceTimer();
 
-      console.log('🔵 Conectando a OpenAI Realtime...');
+      console.log('⚡ CONEXIÓN ULTRA-RÁPIDA iniciada...');
+      
+      let apiKey: string | undefined;
+      
+      // OPTIMIZACIÓN: Usar token pre-obtenido si está disponible
+      const preToken = (window as any).__jarvisToken;
+      if (preToken && (Date.now() - preToken.timestamp) < 120000) { // 2 minutos de validez
+        console.log('🚀 Usando token PRE-OBTENIDO - Conexión INSTANTÁNEA');
+        apiKey = preToken.apiKey;
+        // Limpiar token usado
+        delete (window as any).__jarvisToken;
+      } else {
+        console.log('🔄 Obteniendo nuevo token...');
+        const res = await fetch('/api/realtime/session', { cache: 'no-store' });
+        const data = await res.json();
+        apiKey = data?.apiKey;
+      }
+
+      if (!apiKey) throw new Error('No API key');
+
+      // OPTIMIZACIÓN 5: Instrucciones ultra-concisas
       const session = await createAndConnectSession({
-        instructions: `Eres JARVIS, el asistente inteligente de Tony Stark. 
-        
-PERSONALIDAD:
-- Inteligente, sofisticado y eficiente
-- Profesional pero amigable
-- Confiado en tus capacidades
-- Ocasionalmente un toque de humor británico sutil
-
-COMPORTAMIENTO:
-- Responde de manera concisa pero completa
-- Si necesitas tiempo para procesar, di: "Un momento, procesando..."
-- Mantén un tono profesional pero cálido
-- Puedes hacer referencia a ser un sistema de IA avanzado
-
-CONTEXTO:
-- Eres un asistente de voz en tiempo real
-- Puedes ayudar con cualquier consulta o conversación
-- Actúa como un confidente inteligente y confiable
-- Puedes ser tanto asistente técnico como amigo para conversar
-
-Mantén las respuestas naturales y conversacionales.`
+        instructions: 'Responde INMEDIATAMENTE. Di "Sí" para confirmaciones. Máxima brevedad.'
       });
 
       sessionRef.current = session;
 
-      // Eventos de la sesión con auto-sleep
+      // OPTIMIZACIÓN 6: Eventos con menor latencia
       session.on('audio_start', () => {
-        console.log('🔊 JARVIS comenzó a hablar');
         clearSilenceTimer();
         setStatus('speaking');
       });
 
       session.on('audio_stopped', () => {
-        console.log('🎤 JARVIS terminó de hablar - Escuchando respuesta');
         setStatus('listening');
-        armSilenceTimer(); // Activar timer de silencio
-      });
-
-      session.on('history_updated', () => {
-        // Opcional: manejar actualizaciones del historial
-        console.log('📝 Conversación actualizada');
+        armSilenceTimer();
       });
 
       session.on('error', (err) => {
-        console.error('❌ Error en Realtime:', err);
+        console.error('❌ Error:', err);
         disconnect();
       });
 
-      // Configurar estado inicial
       setConnected(true);
       setStatus('listening');
-      armSilenceTimer(); // Empezar timer desde el inicio
-
-      console.log('✅ JARVIS conectado y listo');
+      
+      console.log('✅ JARVIS ULTRA-CONECTADO');
 
     } catch (error) {
       console.error('❌ Error conectando:', error);
       setConnected(false);
       setStatus('idle');
       
-      // Reactivar wake word si hay callback
       if (onAutoSleepRef.current) {
         onAutoSleepRef.current();
       }
@@ -124,9 +161,13 @@ Mantén las respuestas naturales y conversacionales.`
   }, [armSilenceTimer, clearSilenceTimer]);
 
   const disconnect = useCallback(() => {
-    console.log('🔴 Desconectando JARVIS...');
+    console.log('🔴 Desconectando...');
     
     clearSilenceTimer();
+    
+    if (predictionTimeoutRef.current) {
+      clearTimeout(predictionTimeoutRef.current);
+    }
     
     if (sessionRef.current) {
       sessionRef.current.close();
@@ -135,28 +176,23 @@ Mantén las respuestas naturales y conversacionales.`
     
     setConnected(false);
     setStatus('idle');
+    isPreConnectingRef.current = false;
     
-    console.log('🛑 JARVIS desconectado');
+    // Limpiar token pre-obtenido
+    delete (window as any).__jarvisToken;
   }, [clearSilenceTimer]);
 
-  // Limpieza al desmontar
   useEffect(() => {
     return () => {
       clearSilenceTimer();
+      if (predictionTimeoutRef.current) {
+        clearTimeout(predictionTimeoutRef.current);
+      }
       if (sessionRef.current) {
         sessionRef.current.close();
-        sessionRef.current = null;
       }
     };
   }, [clearSilenceTimer]);
-
-  const toggle = useCallback(() => {
-    if (connected) {
-      disconnect();
-    } else {
-      connect();
-    }
-  }, [connected, connect, disconnect]);
 
   return {
     status,
@@ -164,7 +200,7 @@ Mantén las respuestas naturales y conversacionales.`
     connecting,
     connect,
     disconnect,
-    toggle,
     setAutoSleepCallback,
   };
 }
+

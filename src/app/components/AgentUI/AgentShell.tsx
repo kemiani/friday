@@ -22,9 +22,15 @@ export default function AgentShell({
   wakeError = null,
   children
 }: AgentShellProps) {
-  // Estado para efectos de transición suaves
+  // SOLUCIÓN HIDRATACIÓN: Estado para detectar que estamos en cliente
+  const [isClient, setIsClient] = useState(false);
   const [previousStatus, setPreviousStatus] = useState(status);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Detectar que estamos en cliente
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Detectar cambios de estado para animaciones de transición
   useEffect(() => {
@@ -50,6 +56,9 @@ export default function AgentShell({
   ].filter(Boolean).join(' ');
 
   const getStatusText = () => {
+    // SOLUCIÓN HIDRATACIÓN: Texto consistente hasta que estemos en cliente
+    if (!isClient) return 'INICIALIZANDO...';
+    
     if (wakeError) return `ERROR: ${wakeError}`;
     
     switch (status) {
@@ -66,6 +75,9 @@ export default function AgentShell({
   };
 
   const getSystemName = () => {
+    // SOLUCIÓN HIDRATACIÓN: Nombre consistente hasta que estemos en cliente
+    if (!isClient) return 'SISTEMA';
+    
     if (wakeError) return 'ERROR';
     
     switch (status) {
@@ -80,6 +92,7 @@ export default function AgentShell({
   };
 
   const getAriaLabel = () => {
+    if (!isClient) return 'Inicializando sistema';
     if (wakeListening && !connected) return 'Wake word activo - Di "Jarvis" para activar';
     if (connected) return 'Desconectar JARVIS';
     return 'Activar JARVIS manualmente';
@@ -95,7 +108,7 @@ export default function AgentShell({
       {/* Botón principal */}
       <button
         onClick={onToggle}
-        disabled={connecting}
+        disabled={connecting || !isClient}
         className={cls}
         aria-pressed={connected}
         aria-label={getAriaLabel()}
@@ -112,27 +125,29 @@ export default function AgentShell({
         {getStatusText()}
       </div>
 
-      {/* Indicadores de actividad */}
-      <div className={styles.activityIndicators}>
-        <div className={`${styles.indicator} ${styles.micIndicator} ${
-          status === 'listening' || status === 'wake-listening' || wakeListening ? styles.active : ''
-        }`}>
-          <span>🎤</span>
+      {/* Indicadores de actividad - solo mostrar cuando estemos en cliente */}
+      {isClient && (
+        <div className={styles.activityIndicators}>
+          <div className={`${styles.indicator} ${styles.micIndicator} ${
+            status === 'listening' || status === 'wake-listening' || wakeListening ? styles.active : ''
+          }`}>
+            <span>🎤</span>
+          </div>
+          <div className={`${styles.indicator} ${styles.speakerIndicator} ${
+            status === 'speaking' ? styles.active : ''
+          }`}>
+            <span>🔊</span>
+          </div>
+          <div className={`${styles.indicator} ${styles.wakeIndicator} ${
+            wakeListening && !connected ? styles.active : ''
+          }`}>
+            <span>👂</span>
+          </div>
         </div>
-        <div className={`${styles.indicator} ${styles.speakerIndicator} ${
-          status === 'speaking' ? styles.active : ''
-        }`}>
-          <span>🔊</span>
-        </div>
-        <div className={`${styles.indicator} ${styles.wakeIndicator} ${
-          wakeListening && !connected ? styles.active : ''
-        }`}>
-          <span>👂</span>
-        </div>
-      </div>
+      )}
 
-      {/* Instrucciones de wake word */}
-      {wakeListening && !connected && !wakeError && (
+      {/* Instrucciones de wake word - solo mostrar cuando estemos en cliente */}
+      {isClient && wakeListening && !connected && !wakeError && (
         <div className={styles.wakeInstructions}>
           <div className={styles.wakeText}>
             Di <strong>"Jarvis"</strong> para activar

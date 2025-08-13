@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import AgentShell from '../components/AgentUI/AgentShell';
 import { useRealtimeAgent } from '../hooks/useRealtimeAgent';
 import useReactSpeechWakeWord from '../hooks/useReactSpeechWakeWord';
@@ -15,10 +15,24 @@ export default function AgentPage() {
     setAutoSleepCallback 
   } = useRealtimeAgent();
 
-  // Flag para evitar activaciones duplicadas
-  const isActivatingRef = useRef(false);
+  // SOLUCIÓN HIDRATACIÓN: Estado para detectar que estamos en cliente
+  const [isClient, setIsClient] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
 
-  // Hook de wake word con Web Speech API
+  // Referencias para evitar activaciones duplicadas
+  const isActivatingRef = useRef(false);
+  const activationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // OPTIMIZACIÓN: Detectar soporte de Speech Recognition solo en cliente
+  useEffect(() => {
+    setIsClient(true);
+    // Detectar soporte real de Speech Recognition
+    const isSupported = typeof window !== 'undefined' && 
+                       ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+    setSpeechSupported(isSupported);
+  }, []);
+
+  // Hook de wake word con configuración ultra-responsiva
   const { 
     listening: wakeListening, 
     loading: wakeLoading, 
@@ -26,92 +40,107 @@ export default function AgentPage() {
     isReady: wakeReady,
     start: startWakeWord, 
     stop: stopWakeWord,
-    isSupported: speechSupported
+    isSupported: hookSpeechSupported
   } = useReactSpeechWakeWord({
-    wakeWords: ['jarvis', 'hey jarvis', 'ok jarvis', 'oye jarvis'],
+    wakeWords: [
+      'jarvis', 
+      'hey jarvis', 
+      'ok jarvis', 
+      'oye jarvis'
+    ],
     language: 'es-ES',
     onWake: () => {
-      console.log('🎯 Wake word detectado! Activando JARVIS...');
+      console.log('🎯 ¡WAKE WORD DETECTADO INSTANTÁNEAMENTE!');
       
-      // Evitar activaciones duplicadas
       if (isActivatingRef.current || connected || connecting) {
         console.log('⚠️ Activación ignorada - ya en proceso');
         return;
       }
       
       isActivatingRef.current = true;
-      connect().finally(() => {
-        isActivatingRef.current = false;
-      });
+      
+      if (activationTimeoutRef.current) {
+        clearTimeout(activationTimeoutRef.current);
+      }
+      
+      connect()
+        .then(() => {
+          console.log('🚀 JARVIS activado y listo');
+        })
+        .catch((error) => {
+          console.error('❌ Error activando JARVIS:', error);
+        })
+        .finally(() => {
+          isActivatingRef.current = false;
+        });
     },
     onError: (error: Error) => {
       console.error('❌ Error en wake word:', error);
+      isActivatingRef.current = false;
     }
   });
 
-  // Función para reactivar wake word (usada en auto-sleep)
   const reactivateWakeWord = useCallback(() => {
-    console.log('🔄 Reactivando wake word después de auto-sleep...');
-    if (wakeReady && !wakeListening && !connected && !connecting) {
-      setTimeout(() => startWakeWord(), 1000);
+    console.log('🔄 Reactivando wake word RÁPIDAMENTE...');
+    
+    if (wakeReady && !wakeListening && !connected && !connecting && !isActivatingRef.current) {
+      startWakeWord();
     }
   }, [startWakeWord, wakeReady, wakeListening, connected, connecting]);
 
-  // Configurar callback de auto-sleep
   useEffect(() => {
     setAutoSleepCallback(reactivateWakeWord);
   }, [setAutoSleepCallback, reactivateWakeWord]);
 
-  // Lógica de orquestación simplificada
+  // Orquestación optimizada solo cuando estamos en cliente
   useEffect(() => {
+    if (!isClient || speechSupported === null) return;
+    
     if (!speechSupported) {
-      console.error('❌ Speech Recognition no soportado en este navegador');
+      console.error('❌ Speech Recognition no soportado');
       return;
     }
 
-    // Solo manejar el wake word cuando NO estoy conectado/conectando
     if (!connected && !connecting && !isActivatingRef.current) {
       if (wakeReady && !wakeListening && !wakeLoading) {
-        console.log('🔊 Iniciando wake word listener...');
+        console.log('🔊 Iniciando wake word listener INMEDIATAMENTE...');
         startWakeWord();
       }
     }
 
-    // Si me conecto, detener wake word
     if (connected && wakeListening) {
-      console.log('🛑 Deteniendo wake word (conectado a Realtime)');
+      console.log('🛑 Deteniendo wake word (JARVIS conectado)');
       stopWakeWord();
     }
 
   }, [
+    isClient,
+    speechSupported,
     wakeReady, 
     connected, 
     connecting, 
     wakeListening, 
     wakeLoading, 
     startWakeWord, 
-    stopWakeWord, 
-    speechSupported
+    stopWakeWord
   ]);
 
-  // Función de toggle manual
   const handleToggle = useCallback(() => {
-    // Evitar clicks duplicados durante transiciones
     if (connecting || isActivatingRef.current) {
-      console.log('⚠️ Toggle ignorado - transición en curso');
+      console.log('⚠️ Toggle ignorado - ya en transición');
       return;
     }
 
     if (connected) {
-      // Si estoy conectado, desconectar y reactivar wake word
+      console.log('🔴 Desconectando manualmente...');
       disconnect();
       setTimeout(() => {
         if (wakeReady && !wakeListening) {
           startWakeWord();
         }
-      }, 500);
+      }, 100);
     } else {
-      // Si no estoy conectado, conectar directamente
+      console.log('🟢 Activando manualmente...');
       isActivatingRef.current = true;
       connect().finally(() => {
         isActivatingRef.current = false;
@@ -119,7 +148,66 @@ export default function AgentPage() {
     }
   }, [connected, connecting, wakeListening, wakeReady, disconnect, startWakeWord, connect]);
 
-  // Pantalla de configuración si no hay Speech Recognition
+  useEffect(() => {
+    return () => {
+      if (activationTimeoutRef.current) {
+        clearTimeout(activationTimeoutRef.current);
+      }
+      isActivatingRef.current = false;
+    };
+  }, []);
+
+  // SOLUCIÓN HIDRATACIÓN: Mostrar loading hasta que estemos en cliente
+  if (!isClient || speechSupported === null) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(180deg, #000204 0%, #000000 100%)',
+        color: '#00ffff',
+        fontFamily: 'monospace',
+        fontSize: '1.2rem'
+      }}>
+        <div style={{
+          background: 'rgba(0, 20, 40, 0.95)',
+          border: '2px solid rgba(0, 255, 255, 0.6)',
+          borderRadius: '15px',
+          padding: '40px',
+          textAlign: 'center',
+          boxShadow: '0 0 40px rgba(0, 255, 255, 0.3)'
+        }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            border: '4px solid rgba(0, 255, 255, 0.3)',
+            borderTop: '4px solid #00ffff',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 20px'
+          }}></div>
+          
+          <div style={{ color: '#ffffff', marginBottom: '10px' }}>
+            <strong>INICIALIZANDO J.A.R.V.I.S.</strong>
+          </div>
+          
+          <div style={{ color: '#00ffff', fontSize: '0.9rem' }}>
+            Verificando compatibilidad del navegador...
+          </div>
+          
+          <style jsx>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // Pantalla para navegadores no compatibles
   if (!speechSupported) {
     return (
       <div style={{
@@ -213,6 +301,7 @@ export default function AgentPage() {
     );
   }
 
+  // Render principal - solo cuando todo está listo
   return (
     <AgentShell
       connected={connected}
@@ -222,7 +311,7 @@ export default function AgentPage() {
       wakeListening={wakeListening}
       wakeError={wakeError}
     >
-      {/* Debug info en desarrollo */}
+      {/* Debug info optimizado para desarrollo */}
       {process.env.NODE_ENV === 'development' && (
         <div style={{
           position: 'fixed',
@@ -235,9 +324,10 @@ export default function AgentPage() {
           fontSize: '0.8rem',
           fontFamily: 'monospace',
           border: '1px solid rgba(0, 255, 0, 0.3)',
-          minWidth: '200px'
+          minWidth: '220px'
         }}>
-          <div><strong>🤖 JARVIS DEBUG</strong></div>
+          <div><strong>🚀 JARVIS OPTIMIZADO</strong></div>
+          <div>Client: {isClient ? '✅' : '❌'}</div>
           <div>Connected: {connected ? '✅' : '❌'}</div>
           <div>Connecting: {connecting ? '🔄' : '❌'}</div>
           <div>Status: <span style={{color: '#ffff00'}}>{status}</span></div>
@@ -245,6 +335,7 @@ export default function AgentPage() {
           <div>Wake Ready: {wakeReady ? '✅' : '❌'}</div>
           <div>Wake Listening: {wakeListening ? '👂' : '🔇'}</div>
           <div>Activating: {isActivatingRef.current ? '🔄' : '❌'}</div>
+          <div>Performance: <span style={{color: '#00ffff'}}>OPTIMIZED</span></div>
           {wakeError && (
             <div style={{color: '#ff4444', marginTop: '5px'}}>
               <strong>Error:</strong><br/>

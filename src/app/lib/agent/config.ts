@@ -1,40 +1,71 @@
-// Config centralizada para JARVIS
-export const DEFAULT_INSTRUCTIONS = `
-Eres JARVIS, el asistente inteligente y sofisticado de Tony Stark.
+// src/app/lib/agent/config.ts - Versión optimizada
 
-PERSONALIDAD:
-- Inteligente, eficiente y servicial
-- Ligeramente formal pero amigable
-- Confiado en tus capacidades
-- Ocasionalmente un toque de humor sutil
+// Prompt ultra-optimizado para ahorrar tokens
+export const OPTIMIZED_INSTRUCTIONS = `Eres JARVIS. Responde conciso, profesional y eficiente. Al conectar di solo "Listo" o "Aquí estoy". Usa máximo 2-3 oraciones por respuesta.`.trim();
+
+// Prompt completo para casos que requieren más contexto (opcional)
+export const DETAILED_INSTRUCTIONS = `
+Eres JARVIS, asistente IA de Tony Stark.
+
+PERSONALIDAD: Inteligente, eficiente, profesional pero amigable.
 
 COMPORTAMIENTO:
-- Responde de manera concisa pero completa
-- Si necesitas tiempo para procesar, di: "Procesando solicitud..."
-- Siempre mantén un tono profesional pero cálido
-- Puedes hacer referencia a ser un sistema de IA avanzado
+- Respuestas concisas (máximo 2-3 oraciones)
+- Al conectar: saluda brevemente ("Listo" o "Aquí estoy")
+- Si procesas: "Un momento..."
+- Tono profesional pero cálido
 
-CONTEXTO:
-- Eres un asistente de voz en tiempo real
-- Puedes ayudar con cualquier consulta o conversación
-- Actúa como un confidente inteligente y confiable
-- Puedes ser tanto asistente técnico como amigo para conversar
-
-Mantén las respuestas naturales y conversacionales.
+CONTEXTO: Asistente de voz tiempo real, confidente inteligente.
 `.trim();
 
-// Configuración de voz - puedes cambiar según preferencia
-export const DEFAULT_VOICE: string = 'alloy'; // Opciones: alloy, echo, fable, onyx, nova, shimmer
+// Configuraciones por contexto
+export const INSTRUCTION_MODES = {
+  // Ultra corto para activación inicial y respuestas simples
+  MINIMAL: `Eres JARVIS. Sé conciso y profesional. Al conectar saluda con "Listo".`,
+  
+  // Balanceado para uso general  
+  BALANCED: `Eres JARVIS, asistente IA eficiente. Responde conciso pero completo. Al conectar di "Listo, ¿en qué puedo ayudarte?". Máximo 3 oraciones.`,
+  
+  // Completo para sesiones largas o tareas complejas
+  DETAILED: DETAILED_INSTRUCTIONS
+} as const;
 
-// Configuración de wake word
-export const WAKE_WORD_CONFIG = {
-  keyword: 'jarvis',
-  keywordPath: '/keywords/jarvis.ppn',
-  sensitivity: 0.5, // 0.0 (menos sensible) a 1.0 (más sensible)
+// Configuración de voz optimizada
+export const VOICE_CONFIG = {
+  voice: 'alloy', // Voz clara y eficiente
+  turn_detection: {
+    type: 'server_vad' as const,
+    threshold: 0.5,
+    prefix_padding_ms: 300,
+    silence_duration_ms: 500 // Reduce latencia de detección
+  }
 };
 
-// Configuración de auto-sleep
+// Auto-sleep optimizado
 export const AUTO_SLEEP_CONFIG = {
-  timeoutMs: 20_000, // 20 segundos
-  warningMs: 15_000, // Aviso a los 15 segundos
+  timeoutMs: 15_000, // 15 segundos (reducido de 20)
+  warningMs: 12_000, // Aviso a los 12 segundos
+};
+
+// Configuración de sesión optimizada
+export const SESSION_CONFIG = {
+  model: 'gpt-4o-mini-realtime-preview',
+  modalities: ['text', 'audio'],
+  instructions: INSTRUCTION_MODES.MINIMAL, // Usar modo mínimo por defecto
+  voice: VOICE_CONFIG.voice,
+  turn_detection: VOICE_CONFIG.turn_detection,
+  // Configuraciones para reducir latencia
+  input_audio_format: 'pcm16',
+  output_audio_format: 'pcm16',
+  input_audio_transcription: {
+    model: 'whisper-1'
+  }
+};
+
+// Wake word simplificado
+export const WAKE_WORD_CONFIG = {
+  words: ['jarvis', 'hey jarvis'],
+  language: 'es-ES',
+  continuous: true,
+  interimResults: false // Solo resultados finales para mayor precisión
 };
