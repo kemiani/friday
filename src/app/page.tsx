@@ -229,9 +229,7 @@ export default function LandingPage() {
 
         {/* Connect Button */}
         <div className="relative group">
-          <CustomConnectButton
-            className="px-12 py-4 text-xl font-semibold rounded-full transition-all duration-300 hover:scale-110"
-          />
+          <CustomConnectButton/>
         </div>
 
         {/* Subtitle */}

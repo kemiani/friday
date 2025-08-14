@@ -1,14 +1,4 @@
-// src/app/utils/supabase/supabase.ts
-// Cliente de Supabase con tipos completamente corregidos
-
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY!; // Service key para backend
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Tipos TypeScript - COMPLETAMENTE CORREGIDOS
+// src/app/types/db.ts
 export type UserTier = 'free' | 'pro' | 'business';
 export type AuthMethod = 'wallet' | 'google' | 'email' | 'telegram' | 'discord' | 'x' | 'phone';
 
@@ -51,7 +41,7 @@ export interface JarvisSession {
   duration_seconds: number;
   total_cost_usd: number;
   total_tokens_used: number;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface ConversationHistory {
@@ -63,7 +53,7 @@ export interface ConversationHistory {
   content: string;
   tokens_used: number;
   processing_time_ms: number;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
 }
 
 export interface UserLimits {
@@ -99,7 +89,7 @@ export interface PhoneCall {
   cost_usd: number;
   external_call_id?: string;
   agent_session_id?: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface AuditLog {
@@ -108,81 +98,44 @@ export interface AuditLog {
   action_type: 'user_created' | 'profile_updated' | 'voice_key_set' | 'payment_initiated' | 'call_made' | 'session_started' | 'limit_exceeded' | 'security_violation';
   resource_type: 'user' | 'session' | 'call' | 'payment' | 'contact' | 'limit';
   resource_id?: string;
-  old_values?: Record<string, any>;
-  new_values?: Record<string, any>;
-  metadata: Record<string, any>;
+  old_values?: Record<string, unknown>;
+  new_values?: Record<string, unknown>;
+  metadata: Record<string, unknown>;
   ip_address?: string;
   user_agent?: string;
   created_at: string;
 }
 
-// Funciones helper para tipos
+// Helpers opcionales
 export function isValidUserTier(tier: string): tier is UserTier {
   return ['free', 'pro', 'business'].includes(tier);
 }
-
 export function isValidAuthMethod(method: string): method is AuthMethod {
   return ['wallet', 'google', 'email', 'telegram', 'discord', 'x', 'phone'].includes(method);
 }
 
-// Default values
-export const DEFAULT_USER_LIMITS: Omit<UserLimits, 'id' | 'user_id' | 'created_at' | 'updated_at'> = {
-  daily_minutes_used: 0,
-  monthly_calls_used: 0,
-  monthly_cost_usd: 0,
-  daily_limit: 60, // 1 hora gratis
-  monthly_limit: 100, // 100 llamadas gratis
-  monthly_cost_limit: 50, // $50 USD límite
-  reset_strategy: 'daily',
-  last_reset_date: new Date().toISOString().split('T')[0]
-};
-
 export const TIER_FEATURES = {
-  free: {
-    daily_minutes: 60,
-    monthly_calls: 100,
-    voice_calls: false,
-    email_integration: false,
-    priority_support: false
-  },
-  pro: {
-    daily_minutes: 300,
-    monthly_calls: 1000,
-    voice_calls: true,
-    email_integration: true,
-    priority_support: false
-  },
-  business: {
-    daily_minutes: -1, // unlimited
-    monthly_calls: -1, // unlimited
-    voice_calls: true,
-    email_integration: true,
-    priority_support: true
-  }
+  free: { daily_minutes: 60, monthly_calls: 100, voice_calls: false, email_integration: false, priority_support: false },
+  pro: { daily_minutes: 300, monthly_calls: 1000, voice_calls: true, email_integration: true, priority_support: false },
+  business: { daily_minutes: -1, monthly_calls: -1, voice_calls: true, email_integration: true, priority_support: true }
 } as const;
 
-// Funciones de utilidad
 export function getUserTierFeatures(tier: UserTier) {
   return TIER_FEATURES[tier];
 }
-
 export function canUserAccess(user: User | null, feature: keyof typeof TIER_FEATURES.free): boolean {
   if (!user) return false;
-  
   const features = getUserTierFeatures(user.tier);
   return features[feature] !== false;
 }
 
-// Helper para crear usuario
-export function createUserData(userData: Partial<User>): Omit<User, 'id' | 'created_at' | 'updated_at'> {
-  return {
-    wallet_address: userData.wallet_address,
-    auth_method: userData.auth_method || 'wallet',
-    name: userData.name,
-    email: userData.email,
-    avatar_url: userData.avatar_url,
-    voice_key_hash: userData.voice_key_hash,
-    tier: userData.tier || 'free',
-    is_active: userData.is_active ?? true
-  };
-}
+export const DEFAULT_USER_LIMITS: Omit<UserLimits, 'id' | 'user_id' | 'created_at' | 'updated_at'> = {
+  daily_minutes_used: 0,
+  monthly_calls_used: 0,
+  monthly_cost_usd: 0,
+  daily_limit: 60,
+  monthly_limit: 100,
+  monthly_cost_limit: 50,
+  reset_strategy: 'daily',
+  last_reset_date: new Date().toISOString().split('T')[0]
+};

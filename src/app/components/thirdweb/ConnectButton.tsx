@@ -1,5 +1,5 @@
-// src/app/components/ConnectButton.tsx
-// Botón de conexión personalizado
+// src/app/components/thirdweb/ConnectButton.tsx
+// Botón de conexión personalizado - CORREGIDO
 
 'use client';
 
@@ -9,13 +9,12 @@ import { client, wallets } from "../../thirdweb/thirdweb";
 type ConnectButtonProps = {
   onConnect?: () => void;
   onDisconnect?: () => void;
-  className?: string;
+  // REMOVED: className no se usa, así que lo quitamos del tipo
 };
 
 export function CustomConnectButton({ 
   onConnect, 
-  onDisconnect, 
-  className = "" 
+  onDisconnect
 }: ConnectButtonProps) {
   return (
     <ConnectButton

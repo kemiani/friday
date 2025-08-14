@@ -1,8 +1,9 @@
 // src/app/thirdweb/ThirdWebProvider.tsx
+// FIXED: Removido import no usado
 'use client';
 
 import { ThirdwebProvider } from "thirdweb/react";
-import { client } from "./thirdweb";
+// REMOVED: import { client } from "./thirdweb"; - No se usa
 
 export function AppThirdWebProvider({
   children,

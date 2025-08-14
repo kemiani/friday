@@ -2,24 +2,27 @@
 // Librería realtime actualizada con configuración personalizada - COMPLETAMENTE CORREGIDA
 
 import { RealtimeAgent, RealtimeSession } from '@openai/agents-realtime';
-import { generateSessionConfig, generateUserActivityLog, type FeatureType } from './config';
-import type { User } from '@/app/utils/supabase/supabase';
+import { generateSessionConfig, generateUserActivityLog, canUserAccessFeature, type FeatureType } from './config';
+import type { User } from '@/app/types/db';
 
 export type SessionStatus = 'idle'|'connecting'|'listening'|'speaking';
 
 export interface CreateSessionOptions {
   instructions?: string;
   user?: User | null;
-  onUserActivity?: (log: any) => void;
+  onUserActivity?: (log: Record<string, unknown>) => void;
+}
+
+// Helper para convertir cualquier objeto en Record<string, unknown>
+function asRecord(obj: unknown): Record<string, unknown> {
+  return obj as Record<string, unknown>;
 }
 
 export async function createAndConnectSession(
   opts: CreateSessionOptions = {}
 ): Promise<RealtimeSession> {
-  // CORREGIDO: Asegurar que user nunca sea undefined
   const { instructions, user = null, onUserActivity } = opts;
 
-  // Log de actividad del usuario
   if (onUserActivity && user) {
     onUserActivity(generateUserActivityLog(user, 'session_create_started'));
   }
@@ -38,8 +41,6 @@ export async function createAndConnectSession(
 
     // 2) Generar configuración personalizada
     const sessionConfig = generateSessionConfig(user);
-    
-    // Usar instrucciones personalizadas o las generadas automáticamente
     const finalInstructions = instructions || sessionConfig.instructions;
 
     console.log(`👤 Configurando sesión para ${user?.name || 'usuario anónimo'} (${user?.tier || 'free'})`);
@@ -55,7 +56,7 @@ export async function createAndConnectSession(
 
     // 5) Agregar metadata de usuario a la sesión
     if (user) {
-      (session as any).userContext = {
+      asRecord(session).userContext = {
         id: user.id,
         name: user.name,
         tier: user.tier,
@@ -65,12 +66,11 @@ export async function createAndConnectSession(
       };
     }
 
-    // 6) Conectar (browser: WebRTC; backend: WS)
+    // 6) Conectar
     await session.connect({ apiKey });
 
     console.log(`✅ Sesión conectada para ${user?.name || 'usuario anónimo'}`);
 
-    // Log de conexión exitosa
     if (onUserActivity && user) {
       onUserActivity(generateUserActivityLog(user, 'session_connected'));
     }
@@ -80,7 +80,6 @@ export async function createAndConnectSession(
   } catch (error) {
     console.error('❌ Error creando sesión:', error);
 
-    // Log de error
     if (onUserActivity && user) {
       onUserActivity(generateUserActivityLog(user, 'session_create_failed'));
     }
@@ -89,10 +88,10 @@ export async function createAndConnectSession(
   }
 }
 
-// NUEVO: Función para actualizar el contexto de usuario en sesión activa
+// Actualizar contexto de usuario
 export function updateSessionUserContext(session: RealtimeSession, user: User) {
   try {
-    (session as any).userContext = {
+    asRecord(session).userContext = {
       id: user.id,
       name: user.name,
       tier: user.tier,
@@ -100,26 +99,25 @@ export function updateSessionUserContext(session: RealtimeSession, user: User) {
       email: user.email,
       updated_at: new Date().toISOString()
     };
-
     console.log(`🔄 Contexto de usuario actualizado en sesión: ${user.name}`);
   } catch (error) {
     console.error('❌ Error actualizando contexto de usuario:', error);
   }
 }
 
-// NUEVO: Función para obtener información de la sesión
+// Obtener información de la sesión
 export function getSessionInfo(session: RealtimeSession) {
-  const userContext = (session as any).userContext;
+  const userContext = asRecord(session).userContext;
   
   return {
     isAuthenticated: !!userContext,
     user: userContext || null,
-    sessionId: (session as any).id || 'unknown',
-    connectedAt: (session as any).connectedAt || new Date().toISOString()
+    sessionId: asRecord(session).id || 'unknown',
+    connectedAt: asRecord(session).connectedAt || new Date().toISOString()
   };
 }
 
-// NUEVO: Función para enviar mensaje personalizado con contexto
+// Enviar mensaje personalizado
 export async function sendPersonalizedMessage(
   session: RealtimeSession, 
   message: string, 
@@ -131,11 +129,11 @@ export async function sendPersonalizedMessage(
       : message;
 
     await session.sendMessage({
-      type: 'message',
-      role: 'user',
+      type: 'message' as const,
+      role: 'user' as const,
       content: [
         {
-          type: 'input_text',
+          type: 'input_text' as const,
           text: personalizedMessage
         }
       ]
@@ -148,39 +146,28 @@ export async function sendPersonalizedMessage(
   }
 }
 
-// NUEVO: Función para verificar límites de usuario antes de crear sesión
+// Verificar límites de usuario
 export function checkUserLimits(user: User | null): { allowed: boolean; reason?: string } {
   if (!user) {
     return { allowed: false, reason: 'Usuario no autenticado' };
   }
-
-  // Aquí puedes agregar lógica para verificar límites desde la base de datos
-  // Por ahora, permitir todos los usuarios autenticados
   return { allowed: true };
 }
 
-// NUEVO: Función para cleanup seguro de sesión
+// Limpiar sesión
 export function cleanupSession(session: RealtimeSession, user?: User | null) {
   try {
     console.log(`🧹 Limpiando sesión para ${user?.name || 'usuario anónimo'}`);
-    
-    // Limpiar contexto de usuario
-    delete (session as any).userContext;
-    
-    // Cerrar sesión
+    delete asRecord(session).userContext;
     session.close();
-    
     console.log('✅ Sesión limpiada correctamente');
   } catch (error) {
     console.error('❌ Error limpiando sesión:', error);
   }
 }
 
-// NUEVO: Función para verificar características por usuario
+// Verificar características por usuario
 export function checkUserFeature(user: User | null, feature: FeatureType): boolean {
   if (!user) return false;
-  
-  // Usar la función corregida del config
-  const { canUserAccessFeature } = require('./config');
   return canUserAccessFeature(user, feature);
 }

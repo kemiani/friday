@@ -1,14 +1,15 @@
-// src/app/components/UserOnboarding.tsx
-// Componente de onboarding para usuarios nuevos
+// src/app/components/thirdweb/UserOnboarding.tsx
+// Componente de onboarding para usuarios nuevos - CORREGIDO
 
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth, type UserProfile } from '../../hooks/useAuth';
 
 type OnboardingStep = 'welcome' | 'name' | 'voice-key' | 'complete';
 
-export function UserOnboarding({ user }: { user: any }) {
+// FIXED: Agregado tipo UserProfile importado de useAuth
+export function UserOnboarding({ user }: { user: UserProfile }) {
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [userData, setUserData] = useState({
     name: '',

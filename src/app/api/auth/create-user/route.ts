@@ -1,87 +1,108 @@
 // src/app/api/auth/create-user/route.ts
-// API para crear nuevo usuario
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/app/server/supabaseAdmin";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../utils/supabase/supabase';
+export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
+const AUTH = ["wallet","google","email","telegram","discord","x","phone"] as const;
+type AuthMethod = typeof AUTH[number];
+
+type Body = {
+  wallet_address?: string;
+  email?: string;
+  name?: string;
+  avatar_url?: string;
+  timezone?: string;
+  language_preference?: string;
+  auth_method: AuthMethod; // NOT NULL + CHECK en DB
+};
+
+export async function POST(req: Request) {
   try {
-    const { wallet_address, auth_method, email, name, avatar_url } = await request.json();
+    const headers = req.headers;
+    const ip =
+      headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      headers.get("x-real-ip") ||
+      null;
+    const ua = headers.get("user-agent") ?? null;
 
-    if (!wallet_address || !auth_method) {
-      return NextResponse.json(
-        { error: 'Wallet address y auth_method requeridos' },
-        { status: 400 }
-      );
+    const body = (await req.json()) as Body;
+    const {
+      wallet_address,
+      email,
+      name,
+      avatar_url,
+      timezone = "UTC",
+      language_preference = "es",
+      auth_method
+    } = body;
+
+    if (!AUTH.includes(auth_method)) {
+      return NextResponse.json({ error: "auth_method inválido" }, { status: 400 });
+    }
+    if (!wallet_address && !email) {
+      return NextResponse.json({ error: "wallet_address o email requerido" }, { status: 400 });
     }
 
-    // Verificar que no exista el usuario
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('wallet_address', wallet_address.toLowerCase())
+    // Idempotente: si existe, devolver
+    let finder = supabaseAdmin.from("users").select("*").limit(1);
+    if (wallet_address) finder = finder.eq("wallet_address", wallet_address);
+    if (!wallet_address && email) finder = finder.eq("email", email);
+
+    const { data: existing, error: findErr } = await finder.maybeSingle();
+    if (findErr) throw findErr;
+
+    if (existing) {
+      return NextResponse.json(existing, { status: 200 });
+    }
+
+    // Crear usuario con campos de onboarding
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from("users")
+      .insert([
+        {
+          wallet_address: wallet_address?.toLowerCase() ?? null,
+          email: email ?? null,
+          name: name ?? null,
+          auth_method,
+          avatar_url: avatar_url ?? null,
+          timezone,
+          language_preference,
+          tier: "free",
+
+          // Nuevos campos de onboarding
+          onboarding_completed: false,
+          onboarding_step: 0,
+          pinecone_namespace: `user_${crypto.randomUUID()}`
+        }
+      ])
+      .select("*")
       .single();
+    if (insErr) throw insErr;
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'Usuario ya existe' },
-        { status: 409 }
-      );
-    }
+    // Crear límites iniciales
+    await supabaseAdmin.from("user_limits").insert([{ user_id: inserted.id }]);
 
-    // Crear nuevo usuario
-    const { data: newUser, error: userError } = await supabase
-      .from('users')
-      .insert({
-        wallet_address: wallet_address.toLowerCase(),
-        auth_method,
-        email,
-        name,
-        avatar_url,
-        tier: 'free'
-      })
-      .select()
-      .single();
-
-    if (userError) {
-      console.error('Error creando usuario:', userError);
-      return NextResponse.json(
-        { error: 'Error creando usuario' },
-        { status: 500 }
-      );
-    }
-
-    // Crear límites iniciales para el usuario
-    const { error: limitsError } = await supabase
-      .from('user_limits')
-      .insert({
-        user_id: newUser.id,
-        daily_minutes_used: 0,
-        monthly_calls_used: 0,
-        daily_limit: 60, // 1 hora gratis
-        monthly_limit: 100 // 100 llamadas gratis
-      });
-
-    if (limitsError) {
-      console.error('Error creando límites:', limitsError);
-    }
+    // Audit log
+    await supabaseAdmin.from("audit_logs").insert([
+      {
+        user_id: inserted.id,
+        action_type: "user_created",
+        resource_type: "user",
+        resource_id: inserted.id,
+        new_values: inserted,
+        ip_address: ip,
+        user_agent: ua
+      }
+    ]);
 
     return NextResponse.json({
-      ...newUser,
+      ...inserted,
       is_new_user: true,
-      limits: {
-        daily_minutes_used: 0,
-        monthly_calls_used: 0,
-        daily_limit: 60,
-        monthly_limit: 100
-      }
-    });
-
-  } catch (error) {
-    console.error('Error en /api/auth/create-user:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 }
-    );
+      needs_onboarding: true
+    }, { status: 200 });
+  } catch (e: any) {
+    console.error("create-user error", e);
+    return NextResponse.json({ error: e?.message ?? "Internal error" }, { status: 500 });
   }
 }

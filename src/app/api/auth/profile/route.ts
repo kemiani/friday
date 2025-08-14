@@ -1,53 +1,33 @@
 // src/app/api/auth/profile/route.ts
-// API para obtener perfil de usuario
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/app/server/supabaseAdmin";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../utils/supabase/supabase';
+export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
+type Body = {
+  wallet_address?: string;
+  email?: string;
+};
+
+export async function POST(req: Request) {
   try {
-    const { wallet_address, auth_method } = await request.json();
-
-    if (!wallet_address) {
-      return NextResponse.json(
-        { error: 'Wallet address requerida' },
-        { status: 400 }
-      );
+    const { wallet_address, email } = (await req.json()) as Body;
+    if (!wallet_address && !email) {
+      return NextResponse.json({ error: "wallet_address o email requerido" }, { status: 400 });
     }
 
-    // Buscar usuario por wallet address
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('wallet_address', wallet_address.toLowerCase())
-      .eq('is_active', true)
-      .single();
+    let q = supabaseAdmin.from("users").select("*").limit(1);
+    if (wallet_address) q = q.eq("wallet_address", wallet_address);
+    if (!wallet_address && email) q = q.eq("email", email);
 
-    if (error || !user) {
-      return NextResponse.json(
-        { error: 'Usuario no encontrado' },
-        { status: 404 }
-      );
-    }
+    const { data, error } = await q.maybeSingle();
+    if (error) throw error;
 
-    // Obtener límites de uso
-    const { data: limits } = await supabase
-      .from('user_limits')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
+    if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    return NextResponse.json({
-      ...user,
-      limits: limits || null,
-      is_new_user: false
-    });
-
-  } catch (error) {
-    console.error('Error en /api/auth/profile:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 }
-    );
+    return NextResponse.json(data, { status: 200 });
+  } catch (e: any) {
+    console.error("profile error", e);
+    return NextResponse.json({ error: e?.message ?? "Internal error" }, { status: 500 });
   }
 }

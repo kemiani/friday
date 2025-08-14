@@ -156,11 +156,11 @@ export default function AgentShell({
         </div>
       )}
 
-      {/* Instrucciones de wake word */}
+      {/* Instrucciones de wake word - FIXED: Usar entidades HTML para comillas */}
       {isClient && isWakeActive && !wakeError && (
         <div className={styles.wakeInstructions}>
           <div className={styles.wakeText}>
-            Di <strong>"Jarvis"</strong> para activar
+            Di <strong>&ldquo;Jarvis&rdquo;</strong> para activar
           </div>
         </div>
       )}

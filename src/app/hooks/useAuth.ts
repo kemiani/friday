@@ -6,7 +6,7 @@
 import { useActiveAccount, useActiveWallet, useConnect, useDisconnect } from "thirdweb/react";
 import { useEffect, useState } from "react";
 import { wallets } from "../thirdweb/thirdweb";
-import type { UserTier, AuthMethod } from "@/app/utils/supabase/supabase";
+import type { UserTier, AuthMethod } from "../types/db";
 
 export type UserProfile = {
   id: string;
@@ -20,6 +20,12 @@ export type UserProfile = {
   updated_at: string;
   tier: UserTier;
   is_new_user: boolean;
+    onboarding_completed?: boolean;
+  onboarding_step?: number;
+  preferred_name?: string;
+  gender?: string;
+  preferences?: Record<string, any>;
+  pinecone_namespace?: string;
 };
 
 export function useAuth() {
