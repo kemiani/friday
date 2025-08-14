@@ -22,7 +22,6 @@ export default function AgentShell({
   wakeError = null,
   children
 }: AgentShellProps) {
-  // SOLUCIÓN HIDRATACIÓN: Estado para detectar que estamos en cliente
   const [isClient, setIsClient] = useState(false);
   const [previousStatus, setPreviousStatus] = useState(status);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -45,7 +44,7 @@ export default function AgentShell({
   }, [status, previousStatus]);
 
   // Clases dinámicas del botón
-  const cls = [
+  const buttonClasses = [
     styles.diamondBtn,
     connected ? styles.connected : '',
     status === 'connecting' ? styles.connecting : '',
@@ -56,51 +55,55 @@ export default function AgentShell({
   ].filter(Boolean).join(' ');
 
   const getStatusText = () => {
-    // SOLUCIÓN HIDRATACIÓN: Texto consistente hasta que estemos en cliente
-    if (!isClient) return 'INICIALIZANDO...';
+    if (!isClient) return 'Inicializando sistemas...';
     
-    if (wakeError) return `ERROR: ${wakeError}`;
+    if (wakeError) return `Error: ${wakeError}`;
     
     switch (status) {
-      case 'connecting': return 'INICIALIZANDO SISTEMAS...';
-      case 'listening': return 'J.A.R.V.I.S. ESCUCHANDO...';
-      case 'speaking': return 'J.A.R.V.I.S. RESPONDIENDO...';
-      case 'wake-listening': return 'DI "JARVIS" PARA ACTIVAR';
+      case 'connecting': return 'Inicializando sistemas...';
+      case 'listening': return 'J.A.R.V.I.S. escuchando';
+      case 'speaking': return 'J.A.R.V.I.S. respondiendo';
+      case 'wake-listening': return 'Esperando comando de activación';
       case 'idle': 
-        if (connected) return 'J.A.R.V.I.S. ONLINE';
-        if (wakeListening) return 'DI "JARVIS" PARA ACTIVAR';
-        return 'SISTEMA EN ESPERA';
-      default: return 'SISTEMA LISTO';
+        if (connected) return 'J.A.R.V.I.S. online';
+        if (wakeListening) return 'Esperando comando de activación';
+        return 'Sistema en espera';
+      default: return 'Sistema listo';
     }
   };
 
   const getSystemName = () => {
-    // SOLUCIÓN HIDRATACIÓN: Nombre consistente hasta que estemos en cliente
     if (!isClient) return 'SISTEMA';
     
     if (wakeError) return 'ERROR';
     
     switch (status) {
-      case 'listening': return 'J.A.R.V.I.S.';
-      case 'speaking': return 'J.A.R.V.I.S.';
-      case 'wake-listening': return 'WAKE WORD';
+      case 'listening': 
+      case 'speaking': 
+        return 'J.A.R.V.I.S.';
+      case 'wake-listening': 
+        return 'WAKE SYSTEM';
       default: 
         if (connected) return 'J.A.R.V.I.S.';
-        if (wakeListening) return 'WAKE WORD';
+        if (wakeListening) return 'WAKE SYSTEM';
         return 'SISTEMA';
     }
   };
 
   const getAriaLabel = () => {
     if (!isClient) return 'Inicializando sistema';
-    if (wakeListening && !connected) return 'Wake word activo - Di "Jarvis" para activar';
+    if (wakeListening && !connected) return 'Sistema de activación por voz activo';
     if (connected) return 'Desconectar JARVIS';
-    return 'Activar JARVIS manualmente';
+    return 'Activar JARVIS';
   };
+
+  const isListening = status === 'listening' || status === 'wake-listening' || wakeListening;
+  const isSpeaking = status === 'speaking';
+  const isWakeActive = wakeListening && !connected;
 
   return (
     <div className={styles.wrap}>
-      {/* Indicador de sistema activo */}
+      {/* Nombre del sistema */}
       <div className={styles.systemName}>
         {getSystemName()}
       </div>
@@ -109,12 +112,11 @@ export default function AgentShell({
       <button
         onClick={onToggle}
         disabled={connecting || !isClient}
-        className={cls}
+        className={buttonClasses}
         aria-pressed={connected}
         aria-label={getAriaLabel()}
         title={getAriaLabel()}
       >
-        {/* Indicador de estado interno */}
         <div className={styles.innerCore}>
           <div className={styles.pulseCenter}></div>
         </div>
@@ -125,29 +127,37 @@ export default function AgentShell({
         {getStatusText()}
       </div>
 
-      {/* Indicadores de actividad - solo mostrar cuando estemos en cliente */}
+      {/* Indicadores de actividad */}
       {isClient && (
         <div className={styles.activityIndicators}>
-          <div className={`${styles.indicator} ${styles.micIndicator} ${
-            status === 'listening' || status === 'wake-listening' || wakeListening ? styles.active : ''
-          }`}>
+          {/* Indicador de micrófono */}
+          <div 
+            className={`${styles.indicator} ${styles.micIndicator} ${isListening ? styles.active : ''}`}
+            title="Micrófono"
+          >
             <span>🎤</span>
           </div>
-          <div className={`${styles.indicator} ${styles.speakerIndicator} ${
-            status === 'speaking' ? styles.active : ''
-          }`}>
+          
+          {/* Indicador de altavoz */}
+          <div 
+            className={`${styles.indicator} ${styles.speakerIndicator} ${isSpeaking ? styles.active : ''}`}
+            title="Altavoz"
+          >
             <span>🔊</span>
           </div>
-          <div className={`${styles.indicator} ${styles.wakeIndicator} ${
-            wakeListening && !connected ? styles.active : ''
-          }`}>
+          
+          {/* Indicador de wake word */}
+          <div 
+            className={`${styles.indicator} ${styles.wakeIndicator} ${isWakeActive ? styles.active : ''}`}
+            title="Sistema de activación por voz"
+          >
             <span>👂</span>
           </div>
         </div>
       )}
 
-      {/* Instrucciones de wake word - solo mostrar cuando estemos en cliente */}
-      {isClient && wakeListening && !connected && !wakeError && (
+      {/* Instrucciones de wake word */}
+      {isClient && isWakeActive && !wakeError && (
         <div className={styles.wakeInstructions}>
           <div className={styles.wakeText}>
             Di <strong>"Jarvis"</strong> para activar
