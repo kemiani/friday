@@ -1,23 +1,24 @@
 // src/app/hooks/useAuth.ts
-// Hook personalizado para manejar autenticación
+// Hook personalizado para manejar autenticación - COMPLETAMENTE CORREGIDO
 
 'use client';
 
 import { useActiveAccount, useActiveWallet, useConnect, useDisconnect } from "thirdweb/react";
 import { useEffect, useState } from "react";
 import { wallets } from "../thirdweb/thirdweb";
+import type { UserTier, AuthMethod } from "@/app/utils/supabase/supabase";
 
 export type UserProfile = {
   id: string;
   wallet_address?: string;
-  auth_method: 'wallet' | 'google' | 'email' | 'telegram' | 'discord' | 'x' | 'phone';
+  auth_method: AuthMethod;
   name?: string;
   email?: string;
   avatar_url?: string;
   voice_key?: string;
   created_at: string;
   updated_at: string;
-  tier: 'free' | 'pro' | 'business';
+  tier: UserTier;
   is_new_user: boolean;
 };
 
@@ -101,7 +102,7 @@ export function useAuth() {
     }
   };
 
-  const getAuthMethod = (): UserProfile['auth_method'] => {
+  const getAuthMethod = (): AuthMethod => {
     if (!activeWallet) return 'wallet';
     
     const walletId = activeWallet.id;
@@ -149,7 +150,9 @@ export function useAuth() {
 
   const disconnectWallet = async () => {
     try {
-      await disconnect(activeWallet!);
+      if (activeWallet) {
+        await disconnect(activeWallet);
+      }
       setUser(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconectando');
@@ -171,7 +174,7 @@ export function useAuth() {
 
       if (response.ok) {
         const updatedUser = await response.json();
-        setUser(updatedUser);
+        setUser(prev => ({ ...prev, ...updatedUser, is_new_user: false }));
       } else {
         throw new Error('Error actualizando perfil');
       }

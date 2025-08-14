@@ -1,8 +1,8 @@
 // src/app/lib/agent/realtime.ts
-// Librería realtime actualizada con configuración personalizada
+// Librería realtime actualizada con configuración personalizada - COMPLETAMENTE CORREGIDA
 
 import { RealtimeAgent, RealtimeSession } from '@openai/agents-realtime';
-import { generateSessionConfig, generateUserActivityLog } from './config';
+import { generateSessionConfig, generateUserActivityLog, type FeatureType } from './config';
 import type { User } from '@/app/utils/supabase/supabase';
 
 export type SessionStatus = 'idle'|'connecting'|'listening'|'speaking';
@@ -16,7 +16,8 @@ export interface CreateSessionOptions {
 export async function createAndConnectSession(
   opts: CreateSessionOptions = {}
 ): Promise<RealtimeSession> {
-  const { instructions, user, onUserActivity } = opts;
+  // CORREGIDO: Asegurar que user nunca sea undefined
+  const { instructions, user = null, onUserActivity } = opts;
 
   // Log de actividad del usuario
   if (onUserActivity && user) {
@@ -173,4 +174,13 @@ export function cleanupSession(session: RealtimeSession, user?: User | null) {
   } catch (error) {
     console.error('❌ Error limpiando sesión:', error);
   }
+}
+
+// NUEVO: Función para verificar características por usuario
+export function checkUserFeature(user: User | null, feature: FeatureType): boolean {
+  if (!user) return false;
+  
+  // Usar la función corregida del config
+  const { canUserAccessFeature } = require('./config');
+  return canUserAccessFeature(user, feature);
 }

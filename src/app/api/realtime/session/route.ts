@@ -1,9 +1,37 @@
-// src/app/api/realtime/session/route.ts - Versión optimizada
+// src/app/api/realtime/session/route.ts - Versión optimizada con imports corregidos
 
 import { NextResponse } from 'next/server';
-import { SESSION_CONFIG } from '../../../lib/agent/config';
 
 export const runtime = 'edge';
+
+// Configuración básica para la sesión
+const SESSION_CONFIG = {
+  model: 'gpt-4o-mini-realtime-preview',
+  voice: 'alloy',
+  modalities: ['text', 'audio'],
+  instructions: `Eres JARVIS, asistente IA profesional.
+
+COMPORTAMIENTO AL CONECTAR:
+- Inmediatamente di "Sí?" con tono de pregunta
+- NO agregues explicaciones ni saludos largos
+- Solo "Sí?" y espera mi instrucción
+
+DURANTE LA CONVERSACIÓN:
+- Respuestas concisas (máximo 2-3 oraciones)
+- Tono profesional pero amigable
+- Si procesas: "Un momento..."`,
+  turn_detection: {
+    type: 'server_vad' as const,
+    threshold: 0.5,
+    prefix_padding_ms: 300,
+    silence_duration_ms: 400
+  },
+  input_audio_format: 'pcm16',
+  output_audio_format: 'pcm16',
+  input_audio_transcription: {
+    model: 'whisper-1'
+  }
+};
 
 export async function GET() {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;

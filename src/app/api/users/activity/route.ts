@@ -1,8 +1,8 @@
 // src/app/api/users/activity/route.ts
-// API para registrar actividad y sesiones de usuario
+// API para registrar actividad y sesiones de usuario - IMPORTS CORREGIDOS
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/app/utils/supabase/supabase';
+import { supabase } from '../../../utils/supabase/supabase';
 
 export async function POST(request: NextRequest) {
   try {

@@ -1,5 +1,5 @@
 // src/app/hooks/useRealtimeAgent.ts
-// Hook ultra-optimizado con auto-redirect a home
+// Hook ultra-optimizado con auto-redirect a home - COMPLETAMENTE CORREGIDO
 
 'use client';
 
@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import type { RealtimeSession } from '@openai/agents-realtime';
 import { createAndConnectSession } from '../lib/agent/realtime';
 import { useAuth } from './useAuth';
+import type { User } from '@/app/utils/supabase/supabase';
 
 export type UiStatus = 'idle'|'connecting'|'listening'|'speaking';
 
@@ -194,6 +195,25 @@ INSTRUCCIONES PERSONALIZADAS:
     }
   }, [user]);
 
+  // NUEVO: Función para convertir user de useAuth al tipo User de config.ts
+  const convertToConfigUser = useCallback((authUser: typeof user): User | null => {
+    if (!authUser) return null;
+    
+    return {
+      id: authUser.id,
+      wallet_address: authUser.wallet_address,
+      auth_method: authUser.auth_method,
+      name: authUser.name,
+      email: authUser.email,
+      avatar_url: authUser.avatar_url,
+      voice_key_hash: undefined, // No disponible en useAuth
+      tier: authUser.tier,
+      created_at: authUser.created_at,
+      updated_at: authUser.updated_at,
+      is_active: true // Asumir activo si está conectado
+    };
+  }, []);
+
   // OPTIMIZACIÓN 4: Conexión ULTRA-RÁPIDA con contexto personalizado
   const connect = useCallback(async () => {
     if (sessionRef.current) return;
@@ -239,8 +259,12 @@ Tu primera respuesta debe ser breve e indicar que estás listo para recibir inst
 
       console.log('👤 Conectando con contexto personalizado:', user?.name);
 
+      // CORREGIDO: Convertir el tipo de usuario correctamente
+      const configUser = convertToConfigUser(user);
+
       const session = await createAndConnectSession({
-        instructions: personalizedInstructions
+        instructions: personalizedInstructions,
+        user: configUser // Ahora es del tipo correcto User | null
       });
 
       sessionRef.current = session;
@@ -321,7 +345,7 @@ Tu primera respuesta debe ser breve e indicar que estás listo para recibir inst
     } finally {
       setConnecting(false);
     }
-  }, [armSilenceTimer, clearSilenceTimer, sendPersonalizedGreeting, disconnect, generateUserContext, user, redirectToSafeZone]);
+  }, [armSilenceTimer, clearSilenceTimer, sendPersonalizedGreeting, disconnect, generateUserContext, user, redirectToSafeZone, convertToConfigUser]);
 
   useEffect(() => {
     return () => {

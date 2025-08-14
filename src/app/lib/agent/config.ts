@@ -1,6 +1,17 @@
-// src/app/lib/agent/config.ts - Versión con contexto personalizado de usuario
+// src/app/lib/agent/config.ts - Versión FINAL corregida
 
 import type { User } from "@/app/utils/supabase/supabase";
+
+// Tipos explícitos para evitar errores
+export type FeatureType = 
+  | 'basic_conversation' 
+  | 'simple_queries' 
+  | 'advanced_queries' 
+  | 'voice_calls' 
+  | 'email_basic' 
+  | 'all_features';
+
+export type UserTierType = 'free' | 'pro' | 'business';
 
 // NUEVO: Función para generar prompt personalizado por usuario
 export function generatePersonalizedInstructions(user: User | null): string {
@@ -90,12 +101,12 @@ export function generatePersonalizedGreeting(user: User | null): string {
   return greetings[randomIndex];
 }
 
-// Configuraciones específicas por tier de usuario
+// Configuraciones específicas por tier de usuario - TIPADO CORRECTO
 export const TIER_CONFIGURATIONS = {
   free: {
     maxTokensPerResponse: 100,
     temperature: 0.7,
-    features: ['basic_conversation', 'simple_queries'],
+    features: ['basic_conversation', 'simple_queries'] as const,
     limitations: {
       dailyMinutes: 60,
       monthlyInteractions: 100,
@@ -106,7 +117,7 @@ export const TIER_CONFIGURATIONS = {
   pro: {
     maxTokensPerResponse: 200,
     temperature: 0.8,
-    features: ['basic_conversation', 'advanced_queries', 'voice_calls', 'email_basic'],
+    features: ['basic_conversation', 'advanced_queries', 'voice_calls', 'email_basic'] as const,
     limitations: {
       dailyMinutes: 300,
       monthlyInteractions: 1000,
@@ -117,7 +128,7 @@ export const TIER_CONFIGURATIONS = {
   business: {
     maxTokensPerResponse: 300,
     temperature: 0.9,
-    features: ['all_features'],
+    features: ['all_features'] as const,
     limitations: {
       dailyMinutes: -1, // Unlimited
       monthlyInteractions: -1, // Unlimited
@@ -128,13 +139,14 @@ export const TIER_CONFIGURATIONS = {
 } as const;
 
 // NUEVO: Función para obtener configuración según el tier del usuario
-export function getTierConfiguration(userTier: string = 'free') {
-  return TIER_CONFIGURATIONS[userTier as keyof typeof TIER_CONFIGURATIONS] || TIER_CONFIGURATIONS.free;
+export function getTierConfiguration(userTier?: string) {
+  const tier = userTier as UserTierType || 'free';
+  return TIER_CONFIGURATIONS[tier] || TIER_CONFIGURATIONS.free;
 }
 
 // Configuración de voz optimizada para respuesta personalizada
 export const VOICE_CONFIG = {
-  voice: 'alloy',
+  voice: 'alloy' as const,
   turn_detection: {
     type: 'server_vad' as const,
     threshold: 0.5,
@@ -177,36 +189,39 @@ export const WAKE_WORD_CONFIG = {
   interimResults: false
 };
 
-// NUEVO: Función para verificar si el usuario puede usar una función
-export function canUserAccessFeature(user: User | null, feature: string): boolean {
+// NUEVO: Función para verificar si el usuario puede usar una función - TIPOS CORREGIDOS
+export function canUserAccessFeature(user: User | null, feature: FeatureType): boolean {
   if (!user) return false;
   
   const tierConfig = getTierConfiguration(user.tier);
   
-  if (tierConfig.features.includes('all_features')) {
+  // Verificar si tiene acceso a todas las features
+  if (tierConfig.features.includes('all_features' as any)) {
     return true;
   }
   
-  return tierConfig.features.includes(feature);
+  // Verificar feature específica
+  return tierConfig.features.includes(feature as any);
 }
 
-// NUEVO: Función para obtener mensaje de limitación
-export function getLimitationMessage(user: User | null, feature: string): string {
+// NUEVO: Función para obtener mensaje de limitación - TIPOS CORREGIDOS
+export function getLimitationMessage(user: User | null, feature: FeatureType): string {
   if (!user) return 'Necesitas estar autenticado para usar esta función.';
-  
-  const tierConfig = getTierConfiguration(user.tier);
   
   if (canUserAccessFeature(user, feature)) {
     return '';
   }
   
-  const upgradeMessages = {
+  const upgradeMessages: Record<string, string> = {
     voice_calls: `${user.name}, las llamadas de voz están disponibles en el plan Pro. ¿Te gustaría saber más sobre la actualización?`,
-    email_integration: `${user.name}, la integración con email está disponible en el plan Pro. ¿Quieres que te explique los beneficios?`,
-    advanced_queries: `${user.name}, consultas avanzadas requieren plan Pro. Tu plan actual incluye conversaciones básicas.`
+    email_basic: `${user.name}, la integración con email está disponible en el plan Pro. ¿Quieres que te explique los beneficios?`,
+    advanced_queries: `${user.name}, consultas avanzadas requieren plan Pro. Tu plan actual incluye conversaciones básicas.`,
+    basic_conversation: '', // No debería haber limitación
+    simple_queries: '', // No debería haber limitación
+    all_features: '' // No debería necesitar mensaje
   };
   
-  return upgradeMessages[feature as keyof typeof upgradeMessages] || 
+  return upgradeMessages[feature] || 
          `${user.name}, esta función requiere un plan superior. ¿Te interesa conocer las opciones de actualización?`;
 }
 
@@ -224,3 +239,17 @@ export function generateUserActivityLog(user: User | null, action: string) {
     }
   };
 }
+
+// Configuración por defecto para sesión (para compatibilidad)
+export const SESSION_CONFIG = {
+  model: 'gpt-4o-mini-realtime-preview',
+  voice: VOICE_CONFIG.voice,
+  modalities: ['text', 'audio'],
+  instructions: generatePersonalizedInstructions(null),
+  turn_detection: VOICE_CONFIG.turn_detection,
+  input_audio_format: 'pcm16',
+  output_audio_format: 'pcm16',
+  input_audio_transcription: {
+    model: 'whisper-1'
+  }
+};
