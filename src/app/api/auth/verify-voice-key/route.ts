@@ -2,7 +2,7 @@
 // API para verificar clave de voz
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabase/supabase';
+import { supabase } from '../../../utils/supabase/supabase';
 import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {

@@ -2,7 +2,7 @@
 // API para manejar contactos del usuario
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabase/supabase';
+import { supabase } from '../../../utils/supabase/supabase';
 
 export async function GET(request: NextRequest) {
   try {

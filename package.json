@@ -11,6 +11,8 @@
   "dependencies": {
     "@openai/agents": "^0.0.16",
     "@openai/agents-realtime": "^0.0.16",
+    "@supabase/ssr": "github:supabase/ssr",
+    "bcryptjs": "^3.0.2",
     "next": "15.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",

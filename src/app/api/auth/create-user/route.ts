@@ -2,7 +2,7 @@
 // API para crear nuevo usuario
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabase/supabase';
+import { supabase } from '../../../utils/supabase/supabase';
 
 export async function POST(request: NextRequest) {
   try {

@@ -2,7 +2,7 @@
 // API para actualizar perfil de usuario
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabase/supabase';
+import { supabase } from '../../../utils/supabase/supabase';
 import bcrypt from 'bcryptjs';
 
 export async function PATCH(request: NextRequest) {

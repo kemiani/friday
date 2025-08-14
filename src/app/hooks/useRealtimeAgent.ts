@@ -1,22 +1,25 @@
-// ===============================================
-// 2. HOOK ULTRA-OPTIMIZADO CON RESPUESTA INMEDIATA "SÍ?" FINAL
-// src/app/hooks/useRealtimeAgent.ts (VERSIÓN FINAL CORREGIDA)
-// ===============================================
+// src/app/hooks/useRealtimeAgent.ts
+// Hook ultra-optimizado con auto-redirect a home
 
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { RealtimeSession } from '@openai/agents-realtime';
 import { createAndConnectSession } from '../lib/agent/realtime';
+import { useAuth } from './useAuth';
 
 export type UiStatus = 'idle'|'connecting'|'listening'|'speaking';
 
-const AUTO_SLEEP_MS = 15_000; // Reducido a 15 segundos
+const AUTO_SLEEP_MS = 15_000; // 15 segundos
 
 export function useRealtimeAgent() {
   const [status, setStatus] = useState<UiStatus>('idle');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
+  
   const sessionRef = useRef<RealtimeSession | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onAutoSleepRef = useRef<(() => void) | null>(null);
@@ -24,7 +27,6 @@ export function useRealtimeAgent() {
   // OPTIMIZACIÓN 1: Predicción de activación
   const predictionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isPreConnectingRef = useRef(false);
-  // NUEVO: Flag para evitar múltiples respuestas inmediatas
   const hasTriggeredImmediateResponseRef = useRef(false);
 
   // OPTIMIZACIÓN 2: Pre-conexión predictiva
@@ -37,13 +39,11 @@ export function useRealtimeAgent() {
     isPreConnectingRef.current = true;
 
     try {
-      // Pre-fetch del token sin conectar aún
       const res = await fetch('/api/realtime/session', { cache: 'no-store' });
       const data = await res.json();
       
       if (data?.apiKey) {
         console.log('✅ Token pre-obtenido y listo para uso inmediato');
-        // Guardar token para uso inmediato
         (window as any).__jarvisToken = {
           apiKey: data.apiKey,
           timestamp: Date.now()
@@ -58,7 +58,6 @@ export function useRealtimeAgent() {
 
   // OPTIMIZACIÓN 3: Activar pre-conexión cuando wake word esté activo
   useEffect(() => {
-    // Pre-conectar después de 3 segundos de wake word activo
     predictionTimeoutRef.current = setTimeout(() => {
       preConnect();
     }, 3000);
@@ -80,6 +79,20 @@ export function useRealtimeAgent() {
       silenceTimerRef.current = null;
     }
   }, []);
+
+  // NUEVO: Función para redirigir a home de forma segura
+  const redirectToSafeZone = useCallback(() => {
+    console.log('🏠 Redirigiendo a zona segura (home)...');
+    
+    // Limpiar todos los timers y referencias
+    clearSilenceTimer();
+    if (predictionTimeoutRef.current) {
+      clearTimeout(predictionTimeoutRef.current);
+    }
+    
+    // Redirigir a home
+    router.push('/');
+  }, [router, clearSilenceTimer]);
 
   // Definir disconnect antes para evitar problemas de dependencias
   const disconnect = useCallback(() => {
@@ -108,53 +121,80 @@ export function useRealtimeAgent() {
   const armSilenceTimer = useCallback(() => {
     clearSilenceTimer();
     silenceTimerRef.current = setTimeout(() => {
-      console.log('🕒 Auto-sleep (15s)');
+      console.log('🕒 Auto-sleep (15s) - desconectando y volviendo a home...');
       disconnect();
       
+      // NUEVO: Llamar callback personalizado O redirigir a home
       const callback = onAutoSleepRef.current;
       if (callback) {
         callback();
+      } else {
+        // Si no hay callback, redirigir automáticamente a home
+        redirectToSafeZone();
       }
     }, AUTO_SLEEP_MS);
-  }, [clearSilenceTimer, disconnect]);
+  }, [clearSilenceTimer, disconnect, redirectToSafeZone]);
 
-  // NUEVO: Función para enviar saludo inicial simple
-  const sendInitialGreeting = useCallback(async (session: RealtimeSession) => {
+  // NUEVO: Función para generar contexto personalizado del usuario
+  const generateUserContext = useCallback(() => {
+    if (!user) return '';
+
+    const context = `
+CONTEXTO DEL USUARIO:
+- Nombre: ${user.name || 'Usuario'}
+- Email: ${user.email || 'No especificado'}
+- Tier: ${user.tier || 'free'}
+- Método de auth: ${user.auth_method || 'wallet'}
+- Usuario desde: ${new Date(user.created_at).toLocaleDateString('es-ES')}
+
+INSTRUCCIONES PERSONALIZADAS:
+- Dirígete al usuario como "${user.name || 'Usuario'}"
+- Este es un usuario ${user.tier === 'free' ? 'gratuito' : 'premium'}
+- Mantén respuestas concisas pero personalizadas
+`.trim();
+
+    return context;
+  }, [user]);
+
+  // NUEVO: Función para enviar saludo personalizado
+  const sendPersonalizedGreeting = useCallback(async (session: RealtimeSession) => {
     if (hasTriggeredImmediateResponseRef.current) {
       console.log('🚫 Saludo inicial ya enviado');
       return;
     }
 
     try {
-      console.log('🎤 Enviando saludo inicial...');
+      console.log('🎤 Enviando saludo personalizado...');
       hasTriggeredImmediateResponseRef.current = true;
       
-      // MÉTODO SIMPLIFICADO: Enviar un "Hola" simple que trigger el saludo
+      const greeting = user?.name 
+        ? `Hola ${user.name}` 
+        : 'Hola';
+      
       session.sendMessage({
         type: 'message',
         role: 'user',
         content: [
           {
             type: 'input_text',
-            text: 'Hola' // El agente responderá "Sí?" según sus instrucciones
+            text: greeting
           }
         ]
       });
       
-      console.log('✅ Mensaje de saludo inicial enviado');
+      console.log(`✅ Saludo personalizado enviado: "${greeting}"`);
       
     } catch (error) {
-      console.error('❌ Error enviando saludo inicial:', error);
+      console.error('❌ Error enviando saludo personalizado:', error);
       hasTriggeredImmediateResponseRef.current = false;
       
-      // Reintentar una vez si falla
       setTimeout(() => {
         hasTriggeredImmediateResponseRef.current = false;
       }, 1000);
     }
-  }, []);
+  }, [user]);
 
-  // OPTIMIZACIÓN 4: Conexión ULTRA-RÁPIDA con token pre-obtenido
+  // OPTIMIZACIÓN 4: Conexión ULTRA-RÁPIDA con contexto personalizado
   const connect = useCallback(async () => {
     if (sessionRef.current) return;
     
@@ -162,7 +202,6 @@ export function useRealtimeAgent() {
       setConnecting(true);
       setStatus('connecting');
       clearSilenceTimer();
-      // Resetear flag de respuesta inmediata
       hasTriggeredImmediateResponseRef.current = false;
 
       console.log('⚡ CONEXIÓN ULTRA-RÁPIDA iniciada...');
@@ -171,10 +210,9 @@ export function useRealtimeAgent() {
       
       // OPTIMIZACIÓN: Usar token pre-obtenido si está disponible
       const preToken = (window as any).__jarvisToken;
-      if (preToken && (Date.now() - preToken.timestamp) < 120000) { // 2 minutos de validez
+      if (preToken && (Date.now() - preToken.timestamp) < 120000) {
         console.log('🚀 Usando token PRE-OBTENIDO - Conexión INSTANTÁNEA');
         apiKey = preToken.apiKey;
-        // Limpiar token usado
         delete (window as any).__jarvisToken;
       } else {
         console.log('🔄 Obteniendo nuevo token...');
@@ -185,38 +223,42 @@ export function useRealtimeAgent() {
 
       if (!apiKey) throw new Error('No API key');
 
-      // OPTIMIZACIÓN 5: Instrucciones optimizadas para saludo automático
-      const session = await createAndConnectSession({
-        instructions: `Eres JARVIS, asistente IA profesional.
+      // NUEVO: Generar instrucciones personalizadas
+      const userContext = generateUserContext();
+      const personalizedInstructions = `Eres JARVIS, asistente IA profesional.
+
+${userContext}
 
 COMPORTAMIENTO AL ACTIVARSE:
-- Cuando recibas el primer "Hola" al activarte, responde únicamente con "Sí?" en tono de pregunta
-- Para cualquier mensaje posterior del usuario, sé conciso y profesional (máximo 2-3 oraciones)
-- Siempre mantén un tono eficiente pero amigable
+- Cuando recibas el primer saludo, responde con "Sí?" o "¿En qué puedo ayudarte?"
+- Personaliza tu respuesta usando el nombre del usuario cuando sea apropiado
+- Para mensajes posteriores, sé conciso y profesional (máximo 2-3 oraciones)
+- Mantén un tono eficiente pero amigable y personalizado
 
-Tu primera respuesta al activarte debe ser únicamente "Sí?" - esto indica que estás listo para recibir instrucciones.`
+Tu primera respuesta debe ser breve e indicar que estás listo para recibir instrucciones.`;
+
+      console.log('👤 Conectando con contexto personalizado:', user?.name);
+
+      const session = await createAndConnectSession({
+        instructions: personalizedInstructions
       });
 
       sessionRef.current = session;
 
-      // OPTIMIZACIÓN 6: Configurar eventos básicos de la sesión
-      // Solo usar eventos que sabemos que existen según la documentación
+      // Configurar eventos de la sesión
       session.on('history_updated', (data) => {
         console.log('📝 Historial actualizado:', data);
         
-        // Si acabamos de conectar y no hemos enviado el saludo inicial
         if (connected && !hasTriggeredImmediateResponseRef.current) {
           setTimeout(() => {
-            sendInitialGreeting(session);
+            sendPersonalizedGreeting(session);
           }, 200);
         }
       });
 
-      // MEJORADO: Debugging más detallado para eventos de transport
+      // Configurar eventos de transport si están disponibles
       try {
         const transport = session.transport;
-        console.log('🔍 Transport disponible:', !!transport, typeof transport);
-        
         if (transport && typeof transport.on === 'function') {
           console.log('✅ Configurando event listeners del transport...');
           
@@ -233,49 +275,24 @@ Tu primera respuesta al activarte debe ser únicamente "Sí?" - esto indica que 
           });
           
           transport.on('error', (err: any) => {
-            console.error('❌ Error en transport:', {
-              error: err,
-              type: typeof err,
-              message: err?.message || 'Sin mensaje',
-              stack: err?.stack || 'Sin stack',
-              keys: Object.keys(err || {})
-            });
+            console.error('❌ Error en transport:', err);
             disconnect();
           });
-          
-          console.log('✅ Event listeners del transport configurados');
-        } else {
-          console.log('⚠️ Transport no disponible o sin métodos de eventos');
         }
       } catch (e) {
         console.log('ℹ️ Error configurando eventos de transport:', e);
       }
 
-      // MEJORADO: Manejo de errores con mejor debugging
+      // Configurar error handler de sesión
       try {
-        console.log('🔍 Configurando error listener de sesión...');
-        
         session.on('error' as any, (err: any) => {
-          console.error('❌ Error en sesión detallado:', {
-            error: err,
-            type: typeof err,
-            message: err?.message || 'Sin mensaje',
-            code: err?.code || 'Sin código',
-            stack: err?.stack || 'Sin stack',
-            keys: Object.keys(err || {}),
-            stringified: JSON.stringify(err, null, 2)
-          });
+          console.error('❌ Error en sesión:', err);
           
-          // Solo desconectar si es un error crítico
           if (err?.code === 'connection_error' || err?.message?.includes('connection')) {
             console.log('🔴 Error crítico - desconectando...');
             disconnect();
-          } else {
-            console.log('⚠️ Error no crítico - continuando...');
           }
         });
-        
-        console.log('✅ Error listener configurado');
       } catch (e) {
         console.log('ℹ️ Error configurando error listener:', e);
       }
@@ -283,13 +300,13 @@ Tu primera respuesta al activarte debe ser únicamente "Sí?" - esto indica que 
       setConnected(true);
       setStatus('listening');
       
-      // NUEVO: Enviar saludo inicial después de conexión exitosa
+      // Enviar saludo personalizado después de conexión exitosa
       setTimeout(() => {
-        console.log('🔗 Sesión lista - enviando saludo inicial');
-        sendInitialGreeting(session);
-      }, 500); // 500ms para asegurar que todo esté listo
+        console.log('🔗 Sesión lista - enviando saludo personalizado');
+        sendPersonalizedGreeting(session);
+      }, 500);
       
-      console.log('✅ JARVIS ULTRA-CONECTADO con respuesta inmediata');
+      console.log(`✅ JARVIS CONECTADO para ${user?.name || 'Usuario'}`);
 
     } catch (error) {
       console.error('❌ Error conectando:', error);
@@ -297,14 +314,14 @@ Tu primera respuesta al activarte debe ser únicamente "Sí?" - esto indica que 
       setStatus('idle');
       hasTriggeredImmediateResponseRef.current = false;
       
-      const callback = onAutoSleepRef.current;
-      if (callback) {
-        callback();
-      }
+      // En caso de error, redirigir a home después de un delay
+      setTimeout(() => {
+        redirectToSafeZone();
+      }, 2000);
     } finally {
       setConnecting(false);
     }
-  }, [armSilenceTimer, clearSilenceTimer, sendInitialGreeting, disconnect]);
+  }, [armSilenceTimer, clearSilenceTimer, sendPersonalizedGreeting, disconnect, generateUserContext, user, redirectToSafeZone]);
 
   useEffect(() => {
     return () => {
@@ -326,5 +343,9 @@ Tu primera respuesta al activarte debe ser únicamente "Sí?" - esto indica que 
     connect,
     disconnect,
     setAutoSleepCallback,
+    // NUEVO: Función para redirigir manualmente a zona segura
+    redirectToSafeZone,
+    // INFO: Información del usuario para debugging
+    userInfo: user ? { name: user.name, tier: user.tier } : null
   };
 }

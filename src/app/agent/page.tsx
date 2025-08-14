@@ -1,9 +1,14 @@
+// src/app/agent/page.tsx
+// Página del agente con auto-redirect a home
+
 'use client';
 
 import { useEffect, useCallback, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import AgentShell from '../components/AgentUI/AgentShell';
 import { useRealtimeAgent } from '../hooks/useRealtimeAgent';
 import useReactSpeechWakeWord from '../hooks/useReactSpeechWakeWord';
+import { useAuth } from '../hooks/useAuth';
 
 export default function AgentPage() {
   const { 
@@ -12,8 +17,13 @@ export default function AgentPage() {
     status, 
     connect, 
     disconnect, 
-    setAutoSleepCallback 
+    setAutoSleepCallback,
+    redirectToSafeZone,
+    userInfo
   } = useRealtimeAgent();
+
+  const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
 
   // Estado para detectar que estamos en cliente
   const [isClient, setIsClient] = useState(false);
@@ -23,6 +33,15 @@ export default function AgentPage() {
   const isActivatingRef = useRef(false);
   const activationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // NUEVO: Verificar autenticación
+  useEffect(() => {
+    if (isClient && !isAuthenticated) {
+      console.log('🔒 Usuario no autenticado - redirigiendo a home');
+      router.push('/');
+      return;
+    }
+  }, [isClient, isAuthenticated, router]);
+
   // Detectar soporte de Speech Recognition solo en cliente
   useEffect(() => {
     setIsClient(true);
@@ -31,7 +50,17 @@ export default function AgentPage() {
     setSpeechSupported(isSupported);
   }, []);
 
-  // Hook de wake word
+  // NUEVO: Callback para auto-sleep que redirige a home
+  const handleAutoSleep = useCallback(() => {
+    console.log('😴 Auto-sleep detectado - volviendo a home...');
+    
+    // Mostrar mensaje breve antes de redirigir
+    setTimeout(() => {
+      redirectToSafeZone();
+    }, 1000);
+  }, [redirectToSafeZone]);
+
+  // Hook de wake word (solo activo cuando no está conectado)
   const { 
     listening: wakeListening, 
     loading: wakeLoading, 
@@ -60,7 +89,7 @@ export default function AgentPage() {
       
       connect()
         .then(() => {
-          console.log('🚀 JARVIS activado');
+          console.log(`🚀 JARVIS activado para ${userInfo?.name || 'usuario'}`);
         })
         .catch((error) => {
           console.error('❌ Error activando JARVIS:', error);
@@ -81,13 +110,14 @@ export default function AgentPage() {
     }
   }, [startWakeWord, wakeReady, wakeListening, connected, connecting]);
 
+  // ACTUALIZADO: Configurar callback de auto-sleep personalizado
   useEffect(() => {
-    setAutoSleepCallback(reactivateWakeWord);
-  }, [setAutoSleepCallback, reactivateWakeWord]);
+    setAutoSleepCallback(handleAutoSleep);
+  }, [setAutoSleepCallback, handleAutoSleep]);
 
   // Orquestación optimizada solo cuando estamos en cliente
   useEffect(() => {
-    if (!isClient || speechSupported === null) return;
+    if (!isClient || speechSupported === null || !isAuthenticated) return;
     
     if (!speechSupported) {
       return;
@@ -106,6 +136,7 @@ export default function AgentPage() {
   }, [
     isClient,
     speechSupported,
+    isAuthenticated,
     wakeReady, 
     connected, 
     connecting, 
@@ -135,6 +166,14 @@ export default function AgentPage() {
     }
   }, [connected, connecting, wakeListening, wakeReady, disconnect, startWakeWord, connect]);
 
+  // NUEVO: Función para volver a home manualmente
+  const handleBackToHome = useCallback(() => {
+    if (connected) {
+      disconnect();
+    }
+    redirectToSafeZone();
+  }, [connected, disconnect, redirectToSafeZone]);
+
   useEffect(() => {
     return () => {
       if (activationTimeoutRef.current) {
@@ -145,7 +184,7 @@ export default function AgentPage() {
   }, []);
 
   // Loading state
-  if (!isClient || speechSupported === null) {
+  if (!isClient || speechSupported === null || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-black to-slate-800 flex items-center justify-center">
         <div className="text-center">
@@ -160,7 +199,7 @@ export default function AgentPage() {
           </h2>
           
           <p className="text-cyan-400 text-lg">
-            Verificando sistemas...
+            {!isAuthenticated ? 'Verificando autenticación...' : 'Verificando sistemas...'}
           </p>
         </div>
       </div>
@@ -212,17 +251,26 @@ export default function AgentPage() {
             </div>
           </div>
           
-          <button
-            onClick={() => {
-              isActivatingRef.current = true;
-              connect().finally(() => {
-                isActivatingRef.current = false;
-              });
-            }}
-            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-full transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/25"
-          >
-            🎤 Activar JARVIS Manualmente
-          </button>
+          <div className="flex flex-col gap-4">
+            <button
+              onClick={() => {
+                isActivatingRef.current = true;
+                connect().finally(() => {
+                  isActivatingRef.current = false;
+                });
+              }}
+              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-full transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/25"
+            >
+              🎤 Activar JARVIS Manualmente
+            </button>
+            
+            <button
+              onClick={handleBackToHome}
+              className="px-8 py-4 bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-semibold rounded-full transition-all duration-300 hover:scale-105"
+            >
+              🏠 Volver a Inicio
+            </button>
+          </div>
           
           <p className="text-slate-400 text-sm mt-4">
             Sin wake word, usa el botón para activar
@@ -241,6 +289,53 @@ export default function AgentPage() {
       onToggle={handleToggle}
       wakeListening={wakeListening}
       wakeError={wakeError}
-    />
+    >
+      {/* NUEVO: Información del usuario y botón de home */}
+      <div className="absolute top-6 left-6 z-20">
+        <div className="flex items-center gap-3">
+          {/* Info del usuario */}
+          {user && (
+            <div className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-full px-3 py-2">
+              {user?.avatar_url ? (
+                <img 
+                  src={user.avatar_url} 
+                  alt="Avatar" 
+                  className="w-6 h-6 rounded-full"
+                />
+              ) : (
+                <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-xs font-bold">
+                  {user?.name?.[0]?.toUpperCase() || 'U'}
+                </div>
+              )}
+              <span className="text-white text-sm font-medium">
+                {user?.name || 'Usuario'}
+              </span>
+            </div>
+          )}
+          
+          {/* Botón para volver a home */}
+          <button
+            onClick={handleBackToHome}
+            className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-full px-3 py-2 hover:bg-slate-700/50 transition-colors"
+            title="Volver a inicio"
+          >
+            <span className="text-lg">🏠</span>
+            <span className="text-white text-sm font-medium">Inicio</span>
+          </button>
+        </div>
+      </div>
+
+      {/* NUEVO: Indicador de estado de conexión */}
+      {connected && (
+        <div className="absolute top-6 right-6 z-20">
+          <div className="flex items-center gap-2 bg-green-500/20 backdrop-blur-sm border border-green-400/50 rounded-full px-3 py-2">
+            <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-green-300 text-sm font-medium">
+              Conectado
+            </span>
+          </div>
+        </div>
+      )}
+    </AgentShell>
   );
 }
